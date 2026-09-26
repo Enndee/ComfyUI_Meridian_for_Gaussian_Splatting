@@ -32,12 +32,10 @@ This Repo utilizes the Meridian project and VGGT to create custom camera paths f
 | `nodes/enndee_meridian_parameter_picker.py` | Unified arg + camera-path builder (three path styles, adaptive widgets) |
 | `nodes/enndee_meridian_camera_path.py` | Path math: O orbits, alternating-height pendulum, spiral sweep |
 | `nodes/enndee_meridian_geometry.py` | Runs Meridian `inference/sample.py` from ComfyUI, repeats the first frame for the path length |
-| `web/js/enndee_meridian_parameter_picker.js` | Frontend extension that shows/hides widgets depending on the configuration |
-| `tests/` | 49 unittest cases (three files, run with the portable python) |
 | `examples/meridian_customcampath2.json` | The reference workflow for the whole pipeline |
-| `setup/meridian_setup.py`, `setup.bat` | One-shot setup for a fresh ComfyUI (see below) |
+| `setup.bat`, `setup/meridian_setup.py` | One-shot setup for a fresh ComfyUI (see below) |
 
-The node code is MIT licensed. **Meridian, VGGT-Omega and the H3 weights are *not* redistributed here** - they are separate, licence-gated downloads (see *Requirements*).
+The node code is MIT licensed. **Meridian, VGGT-Omega and the H3 weights are *not* redistributed here** - they are separate, licence-gated downloads (see *Requirements*). The adaptive widget extension of the picker and the unit-test suite live in the development checkout ([Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack)); this install package ships the nodes and the setup only.
 
 ---
 
@@ -206,20 +204,18 @@ Standalone O-orbit path node for path-only graphs; the picker contains the same 
 | `sample.py --help` fails in setup step 5 | Usually torch/VGGT: reinstall torch cu130 in the environment, then `pip install --no-deps -e <tools>\vggt-omega-fp16-version` |
 | Checkpoint download refused (gated) | Download `vggt_omega_1b_512.pt` manually from Hugging Face and drop it into `<tools>\vggt-omega\checkpoints` |
 | Workflow shows red nodes | `setup.bat --install-community-nodes`, add Pixaroma/RTX packs via ComfyUI-Manager, install Enndees_Nodepack for tracker/trainer |
-| Picker widgets do not adapt to the mode | Hard-refresh the browser (Ctrl+F5); the extension is served from `web/js` |
+| Picker shows every widget at once | That is the fallback without the adaptive web extension; everything still works - install [Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack) for the adaptive widgets |
 | `Pivot X/Z must place the subject in front...` | Raise `path_pivot_z` above 0.15 |
 | OOM during the H3 pass | Lower the resolution / super-resolution factor or free VRAM (the example uses three `easy cleanGpuUsed` nodes) |
 
 ---
 
-## Tests
+## Development
 
-```bat
-cd ComfyUI_Meridian_for_Gaussian_Splatting
-..\..\..\python_embeded\python.exe -m unittest discover -s tests -v
-```
-
-49 tests cover the three nodes (path math, adaptive-widget map pins, geometry image/batch handling) without any GPU work.
+The adaptive widget extension (the picker's show/hide logic) and the
+49-unit-test suite live in the development checkout,
+[Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack). This
+install package intentionally ships only what the workflow needs.
 
 ---
 

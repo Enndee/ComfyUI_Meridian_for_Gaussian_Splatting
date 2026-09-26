@@ -52,7 +52,10 @@ if EnndeeMeridianGeometry is not None:
     NODE_CLASS_MAPPINGS["Enndee_MeridianGeometry"] = EnndeeMeridianGeometry
     NODE_DISPLAY_NAME_MAPPINGS["Enndee_MeridianGeometry"] = "Meridian Geometry (Enndee)"
 
-# WEB_DIRECTORY lets ComfyUI serve web/js/... (the picker's adaptive widgets).
-WEB_DIRECTORY = os.path.join(_pack_dir, "web")
+# The adaptive widget extension of the picker ships with the development
+# checkout (Enndees_Nodepack). Serve it when present.
+_web_dir = os.path.join(_pack_dir, "web")
+if os.path.isdir(_web_dir):
+    WEB_DIRECTORY = _web_dir
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

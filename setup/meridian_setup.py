@@ -16,7 +16,9 @@ What it does:
 6. copies the example workflow into the ComfyUI user workflows folder and
    rewrites every machine-specific path to this machine.
 
-Use ``--check`` for a read-only report (no installs, no downloads).
+Use ``--check`` for a read-only report (no installs, no downloads). Pass
+``--meridian-zip <file>`` to unpack a Meridian release zip; its LoRAs are
+copied into ``models\\loras`` automatically.
 """
 
 import argparse
@@ -108,11 +110,12 @@ class Paths:
     def __init__(self, args):
         script = Path(__file__).resolve()
         self.repo_dir = script.parents[1]
-        self.comfy_root = self._detect_comfy_root(args)
+        self.selection_dir = Path(args.comfy_root).resolve() if args.comfy_root else self._guess_selection()
+        self.comfy_root = self._resolve_comfy_root(self.selection_dir)
         self.comfy_dir = self.comfy_root / "ComfyUI"
         self.python_embeded = self.comfy_root / "python_embeded" / "python.exe"
         self.custom_nodes = self.comfy_dir / "custom_nodes"
-        self.tools_dir = Path(args.tools_dir).resolve() if args.tools_dir else self._detect_tools_dir()
+        self.tools_dir = self._resolve_tools_dir(args)
         self.meridian_dir = Path(args.meridian_dir).resolve() if args.meridian_dir else self.tools_dir / "Meridian"
         self.vggt_dir = self.tools_dir / "vggt-omega"
         self.vggt_fork_dir = self.tools_dir / "vggt-omega-fp16-version"
@@ -124,10 +127,8 @@ class Paths:
             else self.comfy_dir / "user" / "default" / "workflows"
         )
 
-    def _detect_comfy_root(self, args):
-        if args.comfy_root:
-            return Path(args.comfy_root).resolve()
-        # Inside custom_nodes\<repo>? Then the root is three levels up.
+    def _guess_selection(self):
+        # Inside custom_nodes\<repo>? Then the portable root is three levels up.
         candidate = self.repo_dir.parents[1] if len(self.repo_dir.parents) > 1 else None
         if candidate and (candidate / "ComfyUI" / "main.py").is_file():
             return candidate
@@ -136,17 +137,39 @@ class Paths:
                 return parent
         return Path.cwd()
 
-    def _detect_tools_dir(self):
-        # The reference layout keeps the tools next to the portable folder
-        # (D:\ComfyUI_Windows_portable\Tools), with a same-level fallback.
-        for candidate in (self.comfy_root.parent / "Tools", self.comfy_root / "Tools"):
-            if (candidate / "Meridian").is_dir() or candidate == self.comfy_root.parent / "Tools":
+    @staticmethod
+    def _resolve_comfy_root(selection):
+        """Accept the portable root itself, its parent, or any wrapper folder."""
+        if (selection / "ComfyUI" / "main.py").is_file():
+            return selection
+        for candidate in sorted(selection.glob("ComfyUI*")):
+            if (candidate / "ComfyUI" / "main.py").is_file():
                 return candidate
-        return self.comfy_root.parent / "Tools"
+        for candidate in sorted(selection.glob("*/ComfyUI*")):
+            if (candidate / "ComfyUI" / "main.py").is_file():
+                return candidate
+        return selection
+
+    def _resolve_tools_dir(self, args):
+        """Tools live in a 'Tools' folder of the selected ComfyUI folder.
+
+        An existing install is reused in place; otherwise '<selected>\\Tools' is
+        the target, exactly as the README describes.
+        """
+        if args.tools_dir:
+            return Path(args.tools_dir).resolve()
+        for candidate in (
+            self.selection_dir / "Tools",
+            self.comfy_root / "Tools",
+            self.comfy_root.parent / "Tools",
+        ):
+            if (candidate / "Meridian").is_dir() or (candidate / "vggt-omega").is_dir():
+                return candidate
+        return self.selection_dir / "Tools"
 
 
 def install_nodes(paths, dry=False):
-    say("[1/6] ComfyUI custom node installation", BLUE)
+    say("[1/8] ComfyUI custom node installation", BLUE)
     target = paths.custom_nodes / REPO_NAME
     if target.resolve() == paths.repo_dir.resolve():
         ok(f"already installed at {target}")
@@ -165,7 +188,7 @@ def install_nodes(paths, dry=False):
 
 
 def check_comfy_dependencies(paths):
-    say("[2/6] ComfyUI-side dependencies", BLUE)
+    say("[2/8] ComfyUI-side dependencies", BLUE)
     if not paths.python_embeded.is_file():
         note(f"portable python not found at {paths.python_embeded}; skipping the import check")
         return
@@ -189,7 +212,7 @@ def conda_executable():
 
 
 def ensure_environment(paths, args, dry=False):
-    say("[3/6] Meridian python environment", BLUE)
+    say("[3/8] Meridian python environment", BLUE)
     if paths.env_python.is_file():
         ok(f"using {paths.env_python}")
         return
@@ -220,7 +243,7 @@ def ensure_environment(paths, args, dry=False):
 
 
 def ensure_vggt(paths, dry=False):
-    say("[4/6] VGGT-Omega code and checkpoint", BLUE)
+    say("[4/8] VGGT-Omega code and checkpoint", BLUE)
     if not has_git():
         note("git not found on PATH; clone these manually and rerun:")
         print(f"       git clone {VGGT_FORK_URL} \"{paths.vggt_fork_dir}\"")
@@ -264,7 +287,8 @@ def ensure_vggt(paths, dry=False):
 
 
 def ensure_meridian(paths, dry=False):
-    say("[5/6] Meridian checkout and environment check", BLUE)
+    say("[5/8] Meridian checkout and environment check", BLUE)
+    extract_meridian_zip(paths, args, dry)
     sample = paths.meridian_dir / "inference" / "sample.py"
     if not sample.is_file():
         fail(f"Meridian not found at {paths.meridian_dir}")
@@ -329,7 +353,7 @@ def _node_widget_order(node_type):
 
 
 def patch_workflow(paths, args, dry=False):
-    say("[6/6] Example workflow", BLUE)
+    say("[6/8] Example workflow", BLUE)
     if args.no_workflow:
         note("--no-workflow: the workflow was not touched")
         return
@@ -428,6 +452,7 @@ def install_community_packs(paths, args, dry=False):
 def print_report(paths):
     say("Resolved locations", BLUE)
     rows = (
+        ("Selected folder", paths.selection_dir),
         ("ComfyUI root", paths.comfy_root),
         ("custom_nodes", paths.custom_nodes),
         ("tools folder", paths.tools_dir),
@@ -440,6 +465,108 @@ def print_report(paths):
     for label, value in rows:
         state = " [present]" if Path(value).exists() else " [missing]"
         print(f"  {label:<18} {value}{state}")
+
+
+def _read_extra_model_paths(paths):
+    """Collect model roots from extra_model_paths.yaml files, if any."""
+    roots = []
+    for candidate in (paths.comfy_root / "extra_model_paths.yaml", paths.comfy_dir / "extra_model_paths.yaml"):
+        if not candidate.is_file():
+            continue
+        for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("base_path:"):
+                value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    roots.append(Path(value))
+    return roots
+
+
+def _model_roots(paths):
+    roots = [paths.comfy_dir / "models"]
+    roots.extend(_read_extra_model_paths(paths))
+    return [root for root in roots if root.is_dir()]
+
+
+REQUIRED_MODELS = (
+    ("diffusion_models", "H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "your MiniMax H3 download"),
+    ("text_encoders", "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", "your MiniMax H3 download"),
+    ("vae", "minimax_h3_video_vae_fp16.safetensors", "your MiniMax H3 download"),
+    ("vae", "minimax_h3_audio_vae_fp32.safetensors", "your MiniMax H3 download"),
+    ("loras", "meridian_teacher_lora.safetensors", "ships in the Meridian release"),
+    ("loras", "meridian_turbo_lora.safetensors", "ships in the Meridian release"),
+)
+
+
+def ensure_models(paths, args, dry=False):
+    say("[7/8] Model files the example workflow needs", BLUE)
+    roots = _model_roots(paths)
+    if not roots:
+        note("no models folder found yet; expected under ComfyUI\\models")
+        return
+    missing = []
+    for folder, name, source in REQUIRED_MODELS:
+        if any((root / folder / name).is_file() for root in roots):
+            ok(f"{folder}\\{name}")
+        else:
+            missing.append((folder, name, source))
+    if missing:
+        note("missing (copy them into ComfyUI\\models\\<folder>):")
+        for folder, name, source in missing:
+            print(f"         {folder}\\{name}  <- {source}")
+    else:
+        ok("all workflow models found")
+
+
+def extract_meridian_zip(paths, args, dry=False):
+    """Unpack a Meridian release zip when the user provided one."""
+    zip_option = getattr(args, "meridian_zip", None)
+    if not zip_option:
+        return
+    zip_path = Path(zip_option).resolve()
+    if not zip_path.is_file():
+        note(f"--meridian-zip not found: {zip_path}")
+        return
+    if (paths.meridian_dir / "inference" / "sample.py").is_file():
+        ok("Meridian is already extracted; keeping it")
+        copy_meridian_loras(paths, dry=dry)
+        return
+    import zipfile
+    say(f"  extracting {zip_path.name} into {paths.meridian_dir}")
+    if dry:
+        return
+    paths.meridian_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        archive.extractall(paths.meridian_dir)
+    entries = list(paths.meridian_dir.iterdir())
+    if len(entries) == 1 and entries[0].is_dir() and not (paths.meridian_dir / "inference").is_dir():
+        inner = entries[0]
+        for item in inner.iterdir():
+            item.rename(paths.meridian_dir / item.name)
+        inner.rmdir()
+    ok(f"Meridian extracted to {paths.meridian_dir}")
+    copy_meridian_loras(paths, dry=dry)
+
+
+def copy_meridian_loras(paths, dry=False):
+    """Copy the release's Meridian LoRAs into the ComfyUI loras folder."""
+    matches = list(paths.meridian_dir.rglob("meridian_*lora.safetensors"))
+    if not matches:
+        return
+    target = paths.comfy_dir / "models" / "loras"
+    if not dry:
+        target.mkdir(parents=True, exist_ok=True)
+    for lora in matches:
+        destination = target / lora.name
+        if destination.is_file():
+            ok(f"lora already present: {destination}")
+            continue
+        if not dry:
+            shutil.copy2(lora, destination)
+        ok(f"lora copied: {destination}")
+    if _read_extra_model_paths(paths):
+        note("extra_model_paths.yaml detected: if ComfyUI reads loras from another "
+             "folder, copy the meridian_*lora.safetensors files there as well")
 
 
 def main():
@@ -456,6 +583,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="print every command without running it")
     parser.add_argument("--skip-env", action="store_true", help="do not create/install the Meridian environment")
     parser.add_argument("--no-workflow", action="store_true", help="do not copy/patch the example workflow")
+    parser.add_argument("--meridian-zip",
+                        help="a Meridian release .zip to extract into <tools>\\Meridian")
     parser.add_argument("--install-community-nodes", action="store_true",
                         help="also clone the public node packs the example workflow uses")
     args = parser.parse_args()
@@ -472,6 +601,7 @@ def main():
     ensure_environment(paths, args, dry=args.dry_run)
     ensure_vggt(paths, dry=args.dry_run)
     meridian_ok = ensure_meridian(paths, dry=args.dry_run)
+    ensure_models(paths, args, dry=args.dry_run)
     patch_workflow(paths, args, dry=args.dry_run)
     install_community_packs(paths, args, dry=args.dry_run)
 
@@ -479,7 +609,7 @@ def main():
     if meridian_ok:
         ok("Meridian environment verified")
     else:
-        note("Meridian still needs attention (see [5/6] above)")
+        note("Meridian still needs attention (see [5/8] above)")
     ok(f"Meridian Geometry values: repo = {paths.meridian_dir}")
     ok(f"                           python = {paths.env_python}")
     say("Restart ComfyUI, open the copied workflow and queue it. The first run "
