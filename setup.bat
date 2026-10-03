@@ -7,6 +7,9 @@ echo ============================================================
 echo   ComfyUI Meridian for Gaussian Splatting - Setup
 echo ============================================================
 echo.
+echo   Geometry runs through fast depth (Depth Anything v3, installed into
+echo   ComfyUI's python) - no VGGT checkout, no checkpoint, no extra env.
+echo.
 echo   Which ComfyUI folder should be prepared? Both answers work:
 echo     - the folder containing "ComfyUI" and "python_embeded"
 echo       e.g.  D:\ComfyUI_windows_portable\ComfyUI_windows_portable
@@ -49,12 +52,24 @@ echo   ComfyUI root : !ROOT!
 echo   Python       : !PY!
 echo.
 
+rem Collect every argument after the first (the first one is the ComfyUI
+rem folder) and forward them to the setup script - e.g.
+rem   setup.bat "D:\ComfyUI" --meridian-zip "X:\Meridian_release.zip" --check
+set "FWD="
+shift
+:collect_args
+if "%~1"=="" goto args_done
+set FWD=!FWD! "%~1"
+shift
+goto collect_args
+:args_done
+
 set "EXTRA="
-if not "%~1"=="" goto run
+if not "%FWD%"=="" goto run
 set /p "COMM=Install the public community node packs used by the example workflow (VHS / easy-use / various)? [y/N]: "
 if /i "!COMM!"=="y" set "EXTRA=--install-community-nodes"
 
 :run
-"!PY!" "%REPO_DIR%setup\meridian_setup.py" --comfy-root "!ROOT!" !EXTRA!
+"!PY!" "%REPO_DIR%setup\meridian_setup.py" --comfy-root "!ROOT!" !FWD! !EXTRA!
 echo.
 pause

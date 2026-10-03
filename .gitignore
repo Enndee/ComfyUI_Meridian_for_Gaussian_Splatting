@@ -1,5 +1,28 @@
+# ── Downloaded COLMAP / GLOMAP binaries (created by install.py on demand) ──
+bin/
+
+# ── User configuration (may contain API keys) ──
+minimax_h3_promptor/config.json
+
+# ── Python ──
 __pycache__/
 *.py[cod]
-*.log
+*.egg-info/
+.venv/
+venv/
 .conda/
 .pytest_cache/
+
+# ── Local one-click helper (never committed) ──
+push_to_github.bat
+
+# ── Editor / OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ──
+*.log
+

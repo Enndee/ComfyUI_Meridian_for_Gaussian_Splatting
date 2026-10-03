@@ -1,116 +1,26 @@
-"""Meridian Geometry runner with custom-camera-path and repeated-first-frame support."""
+"""Meridian Geometry (Enndee): the in-process fast-depth geometry condition pass.
+
+The node runs the Depth-Anything point-cloud flight (`enndee_meridian_fast_depth.py`) for a
+single still - V2 or V3 via `model_size`, no VGGT, no external environment, no subprocess. It
+consumes the `args` string (or **Meridian Parameters and Camera**'s `args_override`) and the
+optional `custom_camera` signal from that same node, and returns
+(source, render, width, height, length) at the Meridian condition canvas.
+
+The VGGT-Omega subprocess backend, its cache and the canvas/source-size/VGGT-path overrides
+were removed on 2026-09-28 - every supported workflow now drives this backend, and the picker
+only offers its two camera modes (manual path or automatic estimate).
+"""
 
 import json
 import os
-import re
 import shlex
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
 
 import av
 import numpy as np
 import torch
 
 from enndee_meridian_camera_path import CAMERA_FRAME_OPTIONS, CAMERA_SIGNAL_TYPE
-
-
-def _add_default_vggt_paths(args, repo):
-    """Append the adjacent VGGT code/checkpoint when either path was omitted."""
-    has_repo = any(token == "--vggt-repo" or token.startswith("--vggt-repo=") for token in args)
-    has_checkpoint = any(token == "--vggt" or token.startswith("--vggt=") for token in args)
-    if has_repo and has_checkpoint:
-        return args
-
-    candidate_roots = [os.path.dirname(os.path.abspath(repo))]
-    configured_repo = next(
-        (os.path.abspath(token.split("=", 1)[1]) for token in args if token.startswith("--vggt-repo=")),
-        None,
-    )
-    if configured_repo:
-        candidate_roots.insert(0, os.path.dirname(configured_repo))
-    if "--vggt-repo" in args:
-        index = args.index("--vggt-repo")
-        if index + 1 < len(args):
-            candidate_roots.insert(0, os.path.dirname(os.path.abspath(args[index + 1])))
-    for root in candidate_roots:
-        vggt_repo = os.path.join(root, "vggt-omega-fp16-version")
-        checkpoint = os.path.join(root, "vggt-omega", "checkpoints", "vggt_omega_1b_512.pt")
-        if os.path.isfile(os.path.join(vggt_repo, "vggt_omega", "models", "vggt_omega.py")):
-            if not has_repo:
-                args.extend(["--vggt-repo", vggt_repo])
-            if not has_checkpoint:
-                args.extend(["--vggt", checkpoint])
-            break
-    return args
-
-
-def _frames(path):
-    with av.open(path) as container:
-        decoded = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
-    if not decoded:
-        raise ValueError(f"Meridian produced an empty video: {path}")
-    return torch.from_numpy(np.stack(decoded)).float().div_(255.0)
-
-
-def _tensor_rgb8(frame):
-    if isinstance(frame, torch.Tensor):
-        pixels = frame.detach().clamp(0, 1).mul(255).round().to(torch.uint8).cpu().numpy()
-    else:
-        pixels = np.asarray(frame)
-        if pixels.dtype != np.uint8:
-            pixels = np.clip(np.rint(pixels * 255.0), 0, 255).astype(np.uint8)
-    if pixels.ndim != 3 or pixels.shape[-1] < 3:
-        raise ValueError("A Meridian video frame must have shape (height, width, RGB[A]).")
-    return np.ascontiguousarray(pixels[..., :3], dtype=np.uint8)
-
-
-def _write_rgb_frames_video(rgb_frames, path, fps=24):
-    """Write RGB uint8 frames losslessly with the portable PyAV libx264rgb encoder."""
-    frame_iterator = iter(rgb_frames)
-    try:
-        first = _tensor_rgb8(next(frame_iterator))
-    except StopIteration as exc:
-        raise ValueError("Cannot write a Meridian video without frames.") from exc
-
-    height, width = first.shape[:2]
-    with av.open(path, mode="w") as container:
-        stream = container.add_stream("libx264rgb", rate=fps)
-        stream.width = width
-        stream.height = height
-        stream.pix_fmt = "rgb24"
-        stream.options = {"crf": "0", "preset": "fast"}
-
-        video_frame = av.VideoFrame.from_ndarray(first, format="rgb24")
-        for packet in stream.encode(video_frame):
-            container.mux(packet)
-        for pixels in frame_iterator:
-            rgb = _tensor_rgb8(pixels)
-            if rgb.shape != first.shape:
-                raise ValueError("All Meridian video frames must have identical dimensions.")
-            video_frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
-            for packet in stream.encode(video_frame):
-                container.mux(packet)
-        for packet in stream.encode():
-            container.mux(packet)
-
-
-def _write_image_batch_video(frames, path, fps=24):
-    """Encode a BHWC ComfyUI image batch as a lossless RGB video."""
-    if not isinstance(frames, torch.Tensor) or frames.ndim != 4 or frames.shape[0] < 1:
-        raise ValueError("Meridian image batches must have shape (frames, height, width, channels).")
-    _write_rgb_frames_video((frame for frame in frames), path, fps=fps)
-
-
-def _write_repeated_frame_video(first_frame, frame_count, path, fps=24):
-    """Create exactly frame_count copies of one input image for a custom camera path."""
-    frame_count = int(frame_count)
-    if frame_count < 1:
-        raise ValueError("A custom camera path must contain at least one frame.")
-    rgb = _tensor_rgb8(first_frame)
-    _write_rgb_frames_video((rgb for _ in range(frame_count)), path, fps=fps)
-
+from enndee_meridian_fast_depth import DA3_RES, parse_camera_settings, render_depth_aligned
 
 def _read_first_video_frame(video_path):
     """Decode only the first RGB frame from an existing video path."""
@@ -120,54 +30,6 @@ def _read_first_video_frame(video_path):
         raise ValueError(f"Could not decode a first frame from the video input: {video_path}")
     pixels = frame.to_ndarray(format="rgb24")
     return torch.from_numpy(pixels.copy()).float().div_(255.0)
-
-
-_CAMERA_OPTION_WITH_VALUE = {
-    "--camera-path",
-    "--frames",
-    "--start",
-    "--freeze",
-    "--yaw",
-    "--yaw-from",
-    "--truck",
-    "--boom",
-    "--dolly",
-    "--zoom",
-    "--pivot",
-    "--pivot-to",
-    "--live-speed",
-    "--fast-back",
-}
-_CAMERA_OPTION_FLAGS = {
-    "--follow",
-    "--sweep",
-    "--bounce",
-    "--swing",
-    "--ease",
-    "--aim",
-    "--pivot-lock",
-}
-
-
-def _args_for_custom_camera(args_text, camera_path_file, frames):
-    """Keep unrelated Meridian settings, removing motion args overridden by the path signal."""
-    tokens = _parse_cli_tokens(args_text)
-    result = []
-    skip_next = False
-    for token in tokens:
-        if skip_next:
-            skip_next = False
-            continue
-        option = token.split("=", 1)[0]
-        if option in _CAMERA_OPTION_WITH_VALUE:
-            if "=" not in token:
-                skip_next = True
-            continue
-        if option in _CAMERA_OPTION_FLAGS:
-            continue
-        result.append(token)
-    result.extend(["--start", "0", "--frames", str(frames), "--camera-path", camera_path_file])
-    return result
 
 
 def _parse_cli_tokens(args_text):
@@ -180,7 +42,7 @@ def _parse_custom_camera(signal):
     try:
         data = json.loads(signal)
     except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("custom_camera must be a valid signal from Meridian Camera Path Configurator (Enndee).") from exc
+        raise ValueError("custom_camera must be a valid signal from Meridian Parameters and Camera (Enndee).") from exc
     if not isinstance(data, dict) or not isinstance(data.get("path"), list):
         raise ValueError("custom_camera is missing its camera-path keyframes.")
     frames = int(data.get("frames", 0))
@@ -222,14 +84,37 @@ class EnndeeMeridianGeometry:
         return {
             "required": {
                 "video": ("STRING", {"default": "clip.mp4", "tooltip": "Source video path. Ignored when a ComfyUI image/batch is connected; with a custom camera path and no image input, the first frame of this video is repeated."}),
-                "args": ("STRING", {"default": "--boom 0.35 --pivot 0.5,0.55 --ease --sweep", "multiline": True, "tooltip": "Additional Meridian options. When custom_camera is connected, its path and frame count take precedence over camera-motion, freeze, follow, start, and frame-count flags."}),
-                "repo": ("STRING", {"default": "/path/to/release_recam", "tooltip": "Meridian checkout containing inference/sample.py."}),
-                "python": ("STRING", {"default": "python", "tooltip": "Python interpreter with Meridian/VGGT installed."}),
+                "args": ("STRING", {"default": "", "multiline": True, "tooltip": "Additional Meridian options. When custom_camera is connected, its path and frame count take precedence over camera-motion and frame-count flags. Empty by default: the Parameters node emits its own arguments, and hand-written flags here are OR-ed with the widgets below."}),
+                "model_size": (["Depth-Anything-V2-Small-hf", "Depth-Anything-V2-Base-hf", "Depth-Anything-V2-Large-hf",
+                                "Depth-Anything-3-Small", "Depth-Anything-3-Base", "Depth-Anything-3-Large",
+                                "Depth-Anything-3-Mono-Large"],
+                               {"default": "Depth-Anything-3-Mono-Large",
+                                "tooltip": "Fast depth only: the depth model. The V2 trio predicts inverted disparity at ~7 ms per frame (needs `transformers`); the V3 series predicts depth directly and is markedly more accurate (needs `python -m pip install --no-deps depth-anything-3` in the ComfyUI python_embeded) - Mono-Large is tuned for single stills, Small is the fast one. Downloads land in the Hugging Face cache; all variants are Apache-2.0."}),
+                "canvas_mode": (["auto_meridian480", "custom"], {"default": "custom",
+                                                                 "tooltip": "Fast depth only: 'auto_meridian480' picks the Meridian 480-class ladder entry nearest the frame's aspect (the trained condition canvas); 'custom' uses the two fields below."}),
+                "custom_width": ("INT", {"default": 832, "min": 64, "max": 2048, "step": 32,
+                                         "tooltip": "Fast depth only: 'custom' canvas width."}),
+                "custom_height": ("INT", {"default": 480, "min": 64, "max": 2048, "step": 32,
+                                          "tooltip": "Fast depth only: 'custom' canvas height."}),
+                "cloud_scale": ("INT", {"default": 2, "min": 1, "max": 4, "step": 1,
+                                        "tooltip": "Fast depth only: unprojection-grid upscale over the working still: 2 doubles the point count (denser silhouette fill), 1 keeps the working still's own resolution."}),
+                "point_size": ("INT", {"default": 1, "min": 0, "max": 3, "step": 1,
+                                       "tooltip": "Fast depth only: point footprint 0=1x1, 1=3x3, 2=5x5, 3=7x7. Larger fills holes where the cloud is sparse after a big camera move."}),
+                "edge_cull": ("BOOLEAN", {"default": True,
+                                          "tooltip": "Fast depth only: drop points on steep depth edges (Meridian's 3x3 EDGE_RTOL rule, applied on the model's own depth grid) so silhouette borders cannot smear into flying spikes."}),
+                "edge_threshold": ("FLOAT", {"default": 0.10, "min": 0.05, "max": 2.0, "step": 0.01,
+                                             "tooltip": "Fast depth only: cull points whose 3x3 relative depth spread exceeds this ratio (Meridian's own EDGE_RTOL is 0.30; a tighter value keeps more of the silhouette and drops fewer fine details)."}),
+                "back_face_cull": ("BOOLEAN", {"default": True,
+                                               "tooltip": "Fast depth only: mirror Meridian's --cull - drop the splats the target camera sees from behind, so a 180-degree view is a hole, not the mirrored front. This widget is the one place to set it: Meridian Parameters and Camera no longer emits --cull (a hand-written --cull in the args string still enables it, but never use both - the renderer reads them as one OR-ed switch, and the widget cannot turn an args-driven cull back off)."}),
+                # 1920 matches the Meridian_Splatting_1.0 example workflow: the render depth model
+                # runs at (about) the still's own side, so the reprojection keeps full detail.
+                "depth_res": ("INT", {"default": 1920, "min": 0, "max": 4096, "step": 1,
+                                      "tooltip": "Fast depth only: working-resolution cap in pixels on the still's longest side (aspect preserved). A bigger input picture is resized down to it *before* the depth model, the colours and the point cloud are built, so huge photos stay fast and can never overflow the percentile clip; the same number is Depth-Anything-V3's `process_res` (rounded to multiples of 14 by the library; a value above the still's own side makes the model upscale). 0 = keep the still's own resolution for maximum depth detail - only a 16.7 Mpx safety ceiling still applies, and a full-resolution still costs seconds per frame on the depth model. The V2 models keep their native 518 depth grid, but the still and the cloud follow this cap for them too."}),
             },
             "optional": {
                 "image": ("IMAGE",),
-                "args_override": ("STRING", {"forceInput": True, "tooltip": "Optional Meridian Parameter Picker argument override."}),
-                "custom_camera": (CAMERA_SIGNAL_TYPE, {"forceInput": True, "tooltip": "Connect custom_camera from Meridian Camera Path Configurator (Enndee). Its frame count controls an automatic repeated-first-frame source clip."}),
+                "args_override": ("STRING", {"forceInput": True, "tooltip": "Optional Meridian Parameters and Camera argument override."}),
+                "custom_camera": (CAMERA_SIGNAL_TYPE, {"forceInput": True, "tooltip": "Connect custom_camera from Meridian Parameters and Camera (Enndee) - the manual path or the automatic estimate. Its frame count sets the flight length."}),
             },
         }
 
@@ -238,68 +123,69 @@ class EnndeeMeridianGeometry:
     FUNCTION = "build"
     CATEGORY = "Enndee/Meridian"
     DESCRIPTION = (
-        "Run Meridian VGGT geometry preview. Connect a generated custom_camera signal to automatically "
-        "repeat the source's first frame to the exact camera-path length and apply its path."
+        "Meridian geometry condition pass for a single still: the in-process Depth-Anything "
+        "point-cloud flight (V2 or V3 via `model_size`, no VGGT, no subprocess). `depth_res` "
+        "caps the still's working resolution and the V3 depth grid (0 = the picture's own "
+        "resolution); `model_size`, the canvas override, the cloud/point density and the two "
+        "cull rules shape the flight. Feed `args` / `args_override` and the `custom_camera` "
+        "signal from Meridian Parameters and Camera (Enndee) - manual path or automatic "
+        "estimate - and the node returns (source, render, width, height, length) at the "
+        "480-class condition canvas."
     )
 
-    def build(self, video, args, repo, python, image=None, args_override=None, custom_camera=None):
-        out = tempfile.mkdtemp(prefix="enndee_meridian_")
-        image_input_path = None
-        try:
-            effective_args = args_override if args_override is not None else args
+    def _build_fast_depth(self, video, effective_args, image, custom_camera, model_size, canvas_mode,
+                          custom_width, custom_height, cloud_scale, point_size, edge_cull,
+                          edge_threshold, back_face_cull, depth_res=DA3_RES):
+        """In-process Depth-Anything pass (V2 or V3 by `model_size`) with the same contract as the VGGT preview.
 
-            if custom_camera is not None:
-                camera_data, frame_count = _parse_custom_camera(custom_camera)
-                path_file = os.path.join(out, "custom_camera_path.json")
-                with open(path_file, "w", encoding="utf-8") as handle:
-                    json.dump(camera_data, handle, ensure_ascii=False)
+        The `args` string is parsed for the sample.py camera flags the fast backend honours
+        (`parse_camera_settings`), so one Meridian Parameters and Camera output configures the
+        flight. `--follow` cannot be replayed without VGGT poses and is reported instead of
+        silently ignored; `--freeze`, `--start` and `--canvas` do not affect a single still.
+        """
+        settings = parse_camera_settings(_parse_cli_tokens(effective_args))
+        if image is not None:
+            if image.ndim != 4 or image.shape[0] < 1:
+                raise ValueError("The connected image input must contain at least one frame.")
+            if image.shape[0] > 1:
+                print("Meridian geometry (Enndee): fast depth uses the first frame of the image batch "
+                      "(single-still image-to-video mode).", flush=True)
+            first_frame = image[0:1]
+        else:
+            if not video or not os.path.isfile(video):
+                raise ValueError("Connect a still/image batch or provide an existing video path for the fast depth mode.")
+            first_frame = _read_first_video_frame(video).unsqueeze(0)
+        if custom_camera is not None:
+            _camera_data, frame_count = _parse_custom_camera(custom_camera)
+        else:
+            if settings["follow"]:
+                raise ValueError("Fast depth cannot replay a source video's own camera path (--follow); "
+                                 "remove the flag from the args or the parameter picker.")
+            frame_count = 73 if settings["frames"] is None else int(settings["frames"])
+            if frame_count not in {int(value) for value in CAMERA_FRAME_OPTIONS}:
+                raise ValueError("Fast depth needs a Meridian output length "
+                                 f"({', '.join(CAMERA_FRAME_OPTIONS)}), got {frame_count}.")
+        source, render, width, height, length = render_depth_aligned(
+            first_frame, torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            model_size=model_size, frames=frame_count, canvas_mode=canvas_mode,
+            custom_width=custom_width, custom_height=custom_height, cloud_scale=cloud_scale,
+            point_size=point_size, edge_cull=edge_cull, edge_threshold=edge_threshold,
+            back_face_cull=back_face_cull, camera=settings, custom_camera=custom_camera,
+            depth_res=depth_res,
+        )
+        print(f"Meridian geometry (Enndee): fast depth -> {width}x{height}, {length} frames.", flush=True)
+        return source, render, width, height, length
 
-                if image is not None:
-                    if image.ndim != 4 or image.shape[0] < 1:
-                        raise ValueError("The connected image input must contain at least one frame.")
-                    first_frame = image[0]
-                else:
-                    if not video or not os.path.isfile(video):
-                        raise ValueError("Connect a still/image batch or provide an existing video path when custom_camera is connected.")
-                    first_frame = _read_first_video_frame(video)
-
-                image_input_path = os.path.join(out, "custom_camera_repeated_first_frame.mp4")
-                _write_repeated_frame_video(first_frame, frame_count, image_input_path)
-                video = image_input_path
-                cmd = [python, f"{repo}/inference/sample.py", "--video", video, "--out", out, "--preview-only"]
-                cmd += _args_for_custom_camera(effective_args, path_file, frame_count)
-            else:
-                if image is not None:
-                    if image.ndim != 4 or image.shape[0] < 1:
-                        raise ValueError("The connected image input must contain at least one frame.")
-                    if image.shape[0] > 1:
-                        image_input_path = os.path.join(out, "image_batch.mp4")
-                        _write_image_batch_video(image, image_input_path)
-                    else:
-                        from PIL import Image
-
-                        image_input_path = os.path.join(out, "still.png")
-                        Image.fromarray(_tensor_rgb8(image[0])).save(image_input_path)
-                    video = image_input_path
-
-                cmd = [python, f"{repo}/inference/sample.py", "--video", video, "--out", out, "--preview-only"]
-                cmd += _parse_cli_tokens(effective_args)
-
-            cmd = _add_default_vggt_paths(cmd, repo)
-            print("Meridian geometry (Enndee):", " ".join(cmd), flush=True)
-            result = subprocess.run(cmd, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            print(result.stdout, flush=True)
-            result.check_returncode()
-
-            match = re.search(r"canvas \((\d+), (\d+)\)", result.stdout)
-            if not match:
-                raise RuntimeError("Meridian completed without reporting its render canvas dimensions.")
-            width, height = map(int, match.groups())
-            source = _frames(os.path.join(out, "cond_source.mp4"))
-            render = _frames(os.path.join(out, "cond_render.mp4"))
-            return source, render, width, height, source.shape[0]
-        finally:
-            shutil.rmtree(out, ignore_errors=True)
+    def build(self, video, args, image=None, args_override=None, custom_camera=None,
+              model_size="Depth-Anything-V2-Small-hf", canvas_mode="auto_meridian480",
+              custom_width=832, custom_height=480, cloud_scale=2, point_size=1, edge_cull=True,
+              edge_threshold=0.30, back_face_cull=False, depth_res=DA3_RES):
+        """Run the fast-depth flight; `args`/`args_override` and `custom_camera` configure it."""
+        effective_args = args_override if args_override is not None else args
+        return self._build_fast_depth(video, effective_args, image, custom_camera, model_size,
+                                      canvas_mode, custom_width, custom_height, cloud_scale,
+                                      point_size, edge_cull, edge_threshold, back_face_cull,
+                                      depth_res)
 
 
 NODE_CLASS_MAPPINGS = {"Enndee_MeridianGeometry": EnndeeMeridianGeometry}

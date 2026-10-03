@@ -1,27 +1,44 @@
 # ComfyUI_Meridian_for_Gaussian_Splatting
 
-This Repo utilizes the Meridian project and VGGT to create custom camera paths for static images. Minimax H3 is used to create plausible completions of missing parts of the picture. Afterwards GLOMAP/COLMAP is used to prepare a dataset for Gaussian Splatting. A custom node is able to automatically call Lichtfeld for the splatting process.
+**Depth Anything v3 replaces VGGT.** The geometry node reconstructs the depth of a single photo
+*in-process* with **Depth Anything v3** (fast depth) and reprojects the camera path itself — there
+is **no VGGT checkout, no `vggt_omega` checkpoint and no separate python environment** any more.
+
+This Repo utilizes the Meridian project and Depth Anything v3 to create custom camera paths for
+static images. Minimax H3 is used to create plausible completions of missing parts of the picture.
+Afterwards GLOMAP/COLMAP is used to prepare a dataset for Gaussian Splatting. A custom node is able
+to automatically call Lichtfeld for the splatting process.
 
 ---
 
 ## What the flow does
 
 ```
- Load & Resize Image            Meridian Parameter Picker            Meridian Geometry            MiniMax H3 (core nodes)
- ┌──────────────────┐   args   ┌───────────────────────────┐  path   ┌──────────────────┐  render  ┌──────────────────────┐
- │ one still photo  │ ───────► │ geometry args + a custom  │ ──────► │ VGGT reconstruction│ ──────► │ re-camera pass with  │
- │ (+ background)   │          │ camera path (3 styles)    │         │ + pseudo-views     │         │ the Meridian LoRAs   │
- └──────────────────┘          └───────────────────────────┘         └──────────────────┘         └──────────────────────┘
-                                                                                                              │
-                                                            GLOMAP Lichtfeld Tracker ──► Lichtfeld Headless Trainer
-                                                            (dataset + COLMAP model)     (Gaussian-splat training)
+ Load & Resize Image   Meridian Parameters and Camera    Meridian Geometry             MiniMax H3 (core)
+ ┌──────────────────┐  ┌───────────────────────────────┐ ┌───────────────────────┐  ┌──────────────────────────┐
+ │ one still photo  │─►│ geometry args + camera path   │─►│ Depth Anything v3:    │─►│ re-camera pass with the  │
+ │ (+ background)   │  │ manual styles or automatic    │  │ depth + reprojection  │  │ Meridian LoRAs           │
+ └──────────────────┘  │ pivot estimate + path         │  │ (pseudo-views)        │  └──────────────────────────┘
+                       └───────────────────────────────┘ └───────────────────────┘
+                                             GLOMAP Lichtfeld Tracker ──► Lichtfeld Headless Trainer
+                                             (dataset + COLMAP model)      (Gaussian-splat training)
 ```
 
 1. **One photo** (optionally background-removed) is the only input.
-2. The **Meridian Geometry** node runs Meta's VGGT-Omega once, then renders the requested camera path from that single depth reconstruction as *pseudo-views* (they are synthetic, not observed geometry).
-3. The **Meridian Parameter Picker** designs that path: O-orbit loops at named stations, an alternating-height pendulum, or a monotone spiral sweep - including zoom (path dolly), look pivot and output length, all with context-aware widgets.
-4. **MiniMax H3** with the Meridian teacher + turbo LoRAs turns the rough re-projection into a plausible, temporally stable clip.
-5. Optionally the clip feeds the **GLOMAP Lichtfeld Tracker** and the **Lichtfeld Headless Trainer** to produce a Gaussian Splat.
+2. The **Meridian Parameters and Camera** node builds the arguments *and* the camera path: either
+   hand-authored styles (O orbits at named stations, an alternating-height pendulum, a spiral
+   sweep) or an **automatic estimate** that locates the subject's (or the whole scene's) geometric
+   pivot from the still's depth profile and flies a speed-capped, collision-guarded path around it.
+   `Auto Orbit View Angle` picks *which side* you stand on, `Auto Orbit Coverage` picks *how much*
+   you see (`Front only` or `Front and Back`: front circle → shortest level connection → the far
+   orbit's full loop 9 → 12 → 3 → 6 → 8 o'clock).
+3. The **Meridian Geometry** node runs **Depth Anything v3** on the still, unprojects the point
+   cloud and re-renders that path into *pseudo-views* (synthetic reprojections, not observed
+   geometry). In-process — no VGGT, no external environment, no `sample.py`.
+4. **MiniMax H3** with the Meridian teacher + turbo LoRAs turns the rough reprojection into a
+   plausible, temporally stable clip.
+5. Optionally the clip feeds the **GLOMAP Lichtfeld Tracker** and the **Lichtfeld Headless Trainer**
+   to produce a Gaussian Splat.
 
 ---
 
@@ -29,13 +46,22 @@ This Repo utilizes the Meridian project and VGGT to create custom camera paths f
 
 | Path | Content |
 |---|---|
-| `nodes/enndee_meridian_parameter_picker.py` | Unified arg + camera-path builder (three path styles, adaptive widgets) |
-| `nodes/enndee_meridian_camera_path.py` | Path math: O orbits, alternating-height pendulum, spiral sweep |
-| `nodes/enndee_meridian_geometry.py` | Runs Meridian `inference/sample.py` from ComfyUI, repeats the first frame for the path length |
-| `examples/meridian_customcampath2.json` | The reference workflow for the whole pipeline |
-| `setup.bat`, `setup/meridian_setup.py` | One-shot setup for a fresh ComfyUI (see below) |
+| `nodes/enndee_meridian_parameters.py` | **Meridian Parameters and Camera (Enndee)** — the args string *and* the camera path (manual styles + automatic estimate) |
+| `nodes/enndee_meridian_auto_camera.py` | the automatic camera: pivot estimate, 45° front circle, view angle / coverage, speed cap, visibility guarantee |
+| `nodes/enndee_meridian_fast_depth.py` | fast-depth backend (Depth Anything v3 / V2) and the in-process reprojection renderer |
+| `nodes/enndee_meridian_camera_path.py` | path math: O orbits, alternating-height pendulum, spiral sweep |
+| `nodes/enndee_meridian_geometry.py` | **Meridian Geometry (Enndee)** — the fast-depth reprojection node |
+| `nodes/glomap_lichtfeld_node.py`, `lichtfeld_training_node.py` | GLOMAP Lichtfeld Tracker, Lichtfeld Headless Trainer |
+| `nodes/enndee_image_loader.py`, `enndee_resolution_selector.py`, `enndee_resize_modes.py`, `enndee_standby_signal.py`, `enndee_unique_filenames.py`, `enndee_video_frame_extractor.py` | the pack's supporting nodes |
+| `nodes/enndee_bin.py`, `enndee_colmap/`, `minimax_h3_promptor/` | binary installer (COLMAP/GLOMAP), vendored COLMAP helpers, MiniMax H3 promptor |
+| `web/js/*.js` | adaptive widget panels (parameters node, image loader, resolution, timeline) |
+| `install.py`, `requirements.txt` | ComfyUI-Manager install: COLMAP/GLOMAP binaries on demand + optional python deps |
+| `tests/*.py` | the unit-test suite (no model downloads, no GPU) |
+| `examples/Meridian_Splatting_1.0.json` | **the reference workflow for the whole pipeline** |
+| `setup.bat`, `setup/meridian_setup.py` | one-shot setup for a fresh ComfyUI (see below) |
 
-The node code is MIT licensed. **Meridian, VGGT-Omega and the H3 weights are *not* redistributed here** - they are separate, licence-gated downloads (see *Requirements*). The adaptive widget extension of the picker and the unit-test suite live in the development checkout ([Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack)); this install package ships the nodes and the setup only.
+The node code is MIT licensed. **Meridian, the MiniMax H3 weights and the LoRAs are *not*
+redistributed here** — they are separate, licence-gated downloads (see *Requirements*).
 
 ---
 
@@ -43,157 +69,155 @@ The node code is MIT licensed. **Meridian, VGGT-Omega and the H3 weights are *no
 
 ### 1. ComfyUI
 
-A recent ComfyUI (portable Windows build recommended) with the **MiniMax H3 core nodes** (`MiniMaxH3ReferenceToVideo`, `MiniMaxH3SigmaShift`, `MiniMaxH3ImageToVideo` inside `comfy_extras/nodes_minimax_h3.py`). Update ComfyUI if those nodes are missing.
+A recent ComfyUI (portable Windows build recommended) with the **MiniMax H3 core nodes**
+(`MiniMaxH3ReferenceToVideo`, `MiniMaxH3SigmaShift`, `MiniMaxH3ImageToVideo` inside
+`comfy_extras/nodes_minimax_h3.py`). Update ComfyUI if those nodes are missing.
 
-### 2. Meridian release (licence-gated)
+### 2. Depth Anything v3 (the fast depth backend)
 
-The `recam`/`inference` code plus the Meridian LoRAs and frozen-embedding assets come from the MiniMax H3 "Meridian" release (MiniMax H3 Community License). Download it yourself and place it so the folder contains:
+One package, installed **without** dependency resolution — its wheel pins `numpy<2` and would drag
+xformers/open3d/pycolmap/moviepy/gsplat/evo into ComfyUI; the backend stubs the two optional
+sub-packages itself:
 
 ```
-<tools>\Meridian\
-├── inference\sample.py            <- executed by Meridian Geometry
-├── recam\                         <- runtime library
-├── assets\                        <- fixed_embed_*.pt / silence_audio_*.pt
-├── LICENSE / LICENSE-CODE / MODIFICATIONS.md
+python -m pip install --no-deps depth-anything-3
 ```
 
-The release also ships a small ComfyUI node file (`MeridianFrozenPrompt`) - install it into `custom_nodes` (or keep the release's own instructions).
+`setup.bat` runs this as step 3/7 and the report then says
+`Depth Anything v3  installed [ok]`. The weights download into the Hugging Face cache on the first
+run (a few hundred MB). The V2 family (`Depth-Anything-V2-*`) stays available as a fallback and
+only needs `transformers`.
 
-### 3. VGGT-Omega + fp16 fork + checkpoint
+### 3. Meridian release (licence-gated)
 
-| Piece | Where it goes | Source |
-|---|---|---|
-| fp16 fork (installable package) | `<tools>\vggt-omega-fp16-version` | `https://github.com/venlyrina/vggt-omega-fp16-version.git` |
-| Meta's upstream checkout (checkpoint folder) | `<tools>\vggt-omega` | `https://github.com/facebookresearch/vggt-omega.git` |
-| `vggt_omega_1b_512.pt` (~4.6 GB) | `<tools>\vggt-omega\checkpoints\` | Hugging Face `wincentIsMe/VGGT-Omega` |
+Only the **LoRAs** are needed — the geometry no longer runs `inference/sample.py`:
+`meridian_teacher_lora.safetensors` and `meridian_turbo_lora.safetensors` from the MiniMax H3
+"Meridian" release (MiniMax H3 Community License) belong into `ComfyUI\models\loras`.
 
-`<tools>` is the folder next to the portable ComfyUI root (`...\ComfyUI_windows_portable\Tools` on the reference machine). With that exact layout the Meridian Geometry node finds both VGGT paths **automatically** - no `--vggt-repo`/`--vggt` needed.
+```
+setup.bat "D:\ComfyUI_windows_portable" --meridian-zip "X:\path\to\Meridian_release.zip"
+```
 
-### 4. Meridian python environment
+### 4. MiniMax H3 model files
 
-An isolated environment (conda env `meridian-vggt`, Python 3.12, **torch 2.12.1 + cu130**, plus `numpy<2`, `Pillow`, `einops`, `safetensors`, `opencv-python`, `av==16.1.0`, `transformers>=4.57`, `peft==0.18.0`, `diffusers@d6726f3`, `huggingface_hub`). `setup.bat` creates it for you; the exact pip recipe lives in `setup/meridian_setup.py` and mirrors the validated `Tools\Meridian\setup_geometry_environment.py` of the reference machine.
+`models\diffusion_models\H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors`,
+`models\text_encoders\qwen3vl_32b_minimax_h3_int8_convrot.safetensors`,
+`models\vae\minimax_h3_video_vae_fp16.safetensors`,
+`models\vae\minimax_h3_audio_vae_fp32.safetensors` (your own H3 download).
+Step 5/7 of the setup lists whatever is missing.
 
-### 5. The rest of the Enndees pack (optional)
+### 5. Community node packs (optional)
 
-The example workflow also uses the **GLOMAP Lichtfeld Tracker**, the **Lichtfeld Headless Trainer** and the **Load & Resize Image** node from [Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack) (that pack also bundles COLMAP/GLOMAP downloads). Install it additionally if you want the dataset/training half of the flow.
-
-### 6. Community node packs used by the example workflow
-
-| Node(s) | Pack | Install |
-|---|---|---|
-| `VHS_VideoCombine` | VideoHelperSuite | `git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite` |
-| `easy cleanGpuUsed` | ComfyUI-Easy-Use | `git clone https://github.com/yamatazen/ComfyUI-Easy-Use` |
-| `JWDatetimeString`, `JWStringConcat` | comfyui-various | `git clone https://github.com/jamesWalker55/comfyui-various` |
-| `RTXVideoSuperResolution` | comfyui_nvidia_rtx_nodes | via ComfyUI-Manager |
-| `PixaromaGroupSwitch` | ComfyUI-Pixaroma | via ComfyUI-Manager |
-
-`setup.bat --install-community-nodes` clones the first three automatically.
-
-### 7. Models (user-provided)
-
-| File | Folder |
-|---|---|
-| `H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors` | `models\diffusion_models` |
-| `qwen3vl_32b_minimax_h3_int8_convrot.safetensors` | `models\text_encoders` |
-| `minimax_h3_video_vae_fp16.safetensors`, `minimax_h3_audio_vae_fp32.safetensors` | `models\vae` |
-| `meridian_teacher_lora.safetensors`, `meridian_turbo_lora.safetensors` | `models\loras` (from the Meridian release) |
+The example workflow uses **VideoHelperSuite**, **ComfyUI-Easy-Use** and **comfyui-various** —
+`setup.bat` offers to clone them (or pass `--install-community-nodes`).
 
 ---
 
-## Installing on a fresh ComfyUI
+## Setup (the tutorial)
 
-```bat
-cd ComfyUI\custom_nodes
-git clone https://github.com/Enndee/ComfyUI_Meridian_for_Gaussian_Splatting
-cd ComfyUI_Meridian_for_Gaussian_Splatting
-setup.bat
+### 1. Get the code
+
+Clone into `ComfyUI\custom_nodes\`, or just run the setup from anywhere:
+
+```
+git clone https://github.com/Enndee/ComfyUI_Meridian_for_Gaussian_Splatting.git
+ComfyUI_Meridian_for_Gaussian_Splatting\setup.bat
 ```
 
-`setup.bat` uses the portable python of the surrounding ComfyUI install and runs `setup/meridian_setup.py`, which:
+`setup.bat` asks for the ComfyUI folder (the one that contains `ComfyUI\` and `python_embeded\`,
+or its parent), offers the community packs, and calls `setup\meridian_setup.py`.
 
-1. installs this repository into `custom_nodes` when run from a standalone clone,
-2. checks that ComfyUI's python can import `av`, `numpy` and `torch` (they ship with ComfyUI - this repository adds no pip packages),
-3. creates the isolated Meridian environment at `<tools>\.conda\meridian-vggt` (conda when available, venv otherwise) and installs torch cu130 + the Meridian requirements,
-4. clones the VGGT fp16 fork and Meta's checkout when missing, and downloads `vggt_omega_1b_512.pt` from Hugging Face when the checkpoint is absent,
-5. verifies the install by running `inference/sample.py --help` inside that environment,
-6. copies `examples/meridian_customcampath2.json` into `ComfyUI\user\default\workflows` and rewrites every machine-specific path (tools folder, Meridian repo, Meridian python, VGGT paths) to your machine, then lists the values that remain yours (LichtFeld-Studio path, input image).
+### 2. What the setup does (7 steps, idempotent)
 
-Everything is idempotent - run it again after a partial install or an update.
-
-Useful flags (pass through `setup.bat`):
-
-| Flag | Effect |
+| Step | What it does |
 |---|---|
-| `--check` | read-only report of every location; changes nothing |
-| `--dry-run` | print all commands without running them |
-| `--comfy-root PATH` | portable root when auto-detection fails |
-| `--tools-dir PATH` | where Meridian/VGGT live (default `<root>\..\Tools`) |
-| `--meridian-dir PATH` | your Meridian release folder (if not `<tools>\Meridian`) |
-| `--python PATH` | use an existing Meridian environment |
-| `--workflows-dir PATH` | e.g. a OneDrive user folder instead of the ComfyUI default |
-| `--torch-index URL` | another CUDA wheel index (default cu130) |
-| `--skip-env` | keep the python environment untouched |
-| `--no-workflow` | do not touch the example workflow |
-| `--install-community-nodes` | also clone VideoHelperSuite, Easy-Use and comfyui-various |
+| 1/7 | copies this repository into `ComfyUI\custom_nodes\` |
+| 2/7 | checks `av` / `numpy` / `torch` in ComfyUI's python |
+| 3/7 | installs **Depth Anything v3** (`pip install --no-deps depth-anything-3`) |
+| 4/7 | unpacks `--meridian-zip` and copies the Meridian LoRAs into `models\loras` |
+| 5/7 | reports the H3 model files the example workflow needs |
+| 6/7 | copies the example workflows to `ComfyUI\user\default\workflows` and rewrites machine-specific `...\Tools\...` paths |
+| 7/7 | (with `--install-community-nodes`) clones VHS / easy-use / various |
 
-### Manual equivalent (if you prefer doing it yourself)
+Useful flags (forwarded by `setup.bat` after the folder argument):
 
-```bat
-git clone https://github.com/venlyrina/vggt-omega-fp16-version.git "%TOOLS%\vggt-omega-fp16-version"
-git clone https://github.com/facebookresearch/vggt-omega.git "%TOOLS%\vggt-omega"
-conda create -p "%TOOLS%\.conda\meridian-vggt" python=3.12 -y
-"%TOOLS%\.conda\meridian-vggt\python.exe" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
-"%TOOLS%\.conda\meridian-vggt\python.exe" -m pip install "numpy<2" Pillow einops safetensors opencv-python av==16.1.0 "transformers>=4.57" peft==0.18.0 huggingface_hub "git+https://github.com/huggingface/diffusers@d6726f3"
-"%TOOLS%\.conda\meridian-vggt\python.exe" -m pip install --no-deps -e "%TOOLS%\vggt-omega-fp16-version"
-"%TOOLS%\.conda\meridian-vggt\python.exe" "%TOOLS%\Meridian\inference\sample.py" --help
+```
+setup.bat "D:\ComfyUI" --check                          # read-only report, change nothing
+setup.bat "D:\ComfyUI" --dry-run                        # print every command, run none
+setup.bat "D:\ComfyUI" --meridian-zip "X:\Meridian.zip" # unpack the release + copy its LoRAs
+setup.bat "D:\ComfyUI" --install-community-nodes        # clone the public example packs
+setup.bat "D:\ComfyUI" --no-workflow                    # do not copy the example workflows
 ```
 
----
+### 3. Restart and go
 
-## The example workflow
-
-`examples/meridian_customcampath2.json` is the full pipeline of the diagram above: one image -> parameter picker -> Meridian Geometry (`--cull --dolly 1.5`) -> dual H3 LoRA pass -> RTX super resolution -> VHS output, plus the GLOMAP tracker and the Lichtfeld trainer on a bypassable group.
-
-`setup.bat` patches these values to your machine:
-
-| Node | Widget | Patched value |
-|---|---|---|
-| `Enndee_MeridianGeometry` | `repo` | `<tools>\Meridian` |
-| `Enndee_MeridianGeometry` | `python` | `<tools>\.conda\meridian-vggt\python.exe` |
-| `Enndee_MeridianParameterPicker` | `vggt_repo` / `vggt_checkpoint` | `<tools>\vggt-omega-fp16-version` / `<tools>\vggt-omega\checkpoints\vggt_omega_1b_512.pt` |
-| `MeridianFrozenPrompt` | assets folder | `<tools>\Meridian\assets` |
-
-Still yours to set: the input image (`Load & Resize Image`), the LichtFeld-Studio executable in the trainer, and the model files from section 7.
+Restart ComfyUI, open **`Meridian_Splatting_1.0`** (Workflow menu) and queue it. The first run
+downloads the DA3 weights into the Hugging Face cache; everything else is user-provided (models
+above). The node defaults in that example are also the *node defaults*:
+**158 frames**, `camera_mode = Automatic`, `auto_max_speed 12`, `auto_subject_fill 40`,
+`model_size = Depth-Anything-3-Mono-Large`, geometry `canvas_mode = custom 832x480`,
+`depth_res = 1920`, `edge_threshold 0.1`, `back_face_cull` on.
 
 ---
 
 ## Nodes
 
-### Meridian Parameter Picker (Enndee) - `Enndee_MeridianParameterPicker`
+### Meridian Parameters and Camera (Enndee) — `Enndee_MeridianParametersAndCamera`
 
-Builds the Meridian `sample.py` arguments and, with **Use Custom Camera** enabled, a camera path. The widget list adapts to the configuration (the frontend extension shows only what matters):
+One node for the geometry arguments **and** the camera path. `Camera Mode` picks the source:
+`Manual` flies the path widgets (O orbits at named stations / alternating-height pendulum / spiral
+sweep) around the absolute look pivot; `Automatic` estimates the pivot from the connected reference
+image and emits the estimated path (the `args` output and the `custom_camera` signal stay in sync
+with the Geometry node).
 
-| Master | Reveals / hides |
-|---|---|
-| `use_custom_camera` | shows the path group, hides the freeze/author-move options that Meridian Geometry overrides |
-| `path_camera_mode` | `O Orbits` -> station checkboxes + start station + orbit diameter; `Alternating Height` -> yaw pair, low/high arc, switch count, first arc; `Spiral Sweep` -> yaw pair + spiral start/end elevation |
-| `freeze_source`, `pivot_enabled`, `aim`, `follow`, `canvas_enabled`, `full_enabled` | their detail widgets |
+The interesting automatic-mode widgets (defaults = the `Meridian_Splatting_1.0` values):
 
-Path styles:
+| Widget | Default | Meaning |
+|---|---|---|
+| `output_frames` | `158` | path length; Meridian ships prompt assets for 73/90/107/124/141/158/175/243 |
+| `camera_mode` | `Automatic` | `Manual` / `Automatic` |
+| `auto_target` | `subject` | orbit the subject (mask or near depth layer) or the whole scene |
+| `auto_max_speed` | `12` | % of the content radius the camera may travel per frame — the hard cap |
+| `auto_subject_fill` | `40` | fill of the subject in the picture (bigger = closer) |
+| `auto_orbit_view_angle` | `0` | azimuth the front circle is centred on: 0 frontal, +90 viewer-left, 180 back, 270 viewer-right |
+| `auto_orbit_coverage` | `Front and Back` | `Front only` = the circle alone; `Front and Back` = circle + level connection + the far orbit's loop (9 → 12 → 3 → 6 → 8 o'clock) |
+| `auto_orbit_direction` | `counter-clockwise` | mirrors the whole path |
+| `model_size` | `Depth-Anything-3-Mono-Large` | depth model of the estimate — must match the Geometry node, or the keys are in the wrong units |
+| `auto_pivot_x/y/z` | `0` | final aim offset in content radii (applied last, cannot be cancelled by the solves) |
 
-- **O Orbits** - closed vertical O loops at named stations (Front, Left, Right, Back, Up, Down, LeftBack, RightBack), the 120-degree rear stations included.
-- **Alternating Height** - sweeps the azimuth from Start Yaw to Target Yaw while the elevation pendulum-swings between the Low and High Arc (odd switch counts end on the opposite arc).
-- **Spiral Sweep** - monotone azimuth + elevation: the shortest route across the full envelope, therefore the lowest, steadiest camera speed (fewest artefacts) and the most new surface per frame. Recommended for maximum coverage.
+The estimate is **speed-capped and visibility-guaranteed**: it never exceeds `auto_max_speed`, the
+back part gives way first when frames cannot pay for it, and the whole subject box stays inside
+every frame (the console prints the achieved swing, drift and clearance instead of hiding it).
+`auto_orbit_distance`, `auto_orbit_size` and `auto_orbit_end` are **deprecated** — they stay in the
+graph so old workflows keep loading, but they are hidden and ignored.
 
-Shared by every style: **Path Dolly** (zoom in/out along the view axis in median-depth units), the look **Pivot** and **Output Frames** (the path length always follows `--frames`). Yaw accepts +/-360 degrees (unwrapped, so 270 = -90). The exported `args` and `custom_camera` keep the picker and the Geometry node in sync.
+### Meridian Geometry (Enndee) — `Enndee_MeridianGeometry`
 
-### Meridian Geometry (Enndee) - `Enndee_MeridianGeometry`
+Fast-depth reprojection node: it reads the still (or an IMAGE batch), runs the depth model, builds
+the point cloud and renders the camera path from it — all inside ComfyUI's python.
 
-Runs `inference/sample.py` of the Meridian release from ComfyUI. `repo` = Meridian folder, `python` = the isolated environment. Accepts a still or an IMAGE batch (encoded as a temporary lossless video, deleted afterwards); with `custom_camera` connected it repeats frame 0 to the path's length and removes motion/freeze/start flags from the args. Adjacent `vggt-omega-fp16-version` and `vggt-omega\checkpoints` folders are detected automatically, so the VGGT widgets can stay empty.
+| Widget | Default | Meaning |
+|---|---|---|
+| `video` | `clip.mp4` | source video path; ignored when an IMAGE is connected (frame 0 repeats) |
+| `args` | *(empty)* | extra Meridian flags; `custom_camera` wins over frame-count/motion flags |
+| `model_size` | `Depth-Anything-3-Mono-Large` | render depth model (V2 trio is the fallback) |
+| `canvas_mode` | `custom` (`832x480`) | `auto_meridian480` = the trained canvas ladder, `custom` = the two fields below |
+| `depth_res` | `1920` | working-resolution cap on the still's longest side; also DA3's `process_res` (`0` = keep the still's own resolution) |
+| `edge_cull` / `edge_threshold` | `on` / `0.1` | drop points on steep depth edges so silhouettes cannot smear into spikes |
+| `back_face_cull` | `on` | Meridian's `--cull`: splats the target camera sees from behind are dropped (no mirrored front) |
+| `cloud_scale` / `point_size` | `2` / `1` | unprojection-grid upscale / point footprint |
+| `image` (optional) | — | the still or frame batch to reproject |
+| `custom_camera` (optional) | — | `custom_camera` from the Parameters node; its frame count sets the flight length |
 
-### Meridian Camera Path Configurator (Enndee) - `Enndee_MeridianCameraPath`
+### The rest of the pack
 
-Standalone O-orbit path node for path-only graphs; the picker contains the same builder plus the other two styles.
+**GLOMAP Lichtfeld Tracker (Enndee)** turns a frame sequence into a ready-to-train Lichtfeld Studio
+dataset (global SfM with the vendored COLMAP/GLOMAP builds that `install.py` downloads);
+**Lichtfeld Headless Trainer (Enndee)** runs the training and exports `.ply`/`.sog`/`.spz`;
+**Load & Resize Image** / **Resolution Selector** / **Video Frame Extractor + Audio** /
+**Standby On Signal** / **MiniMax H3 Direct Promptor** are the workflow helpers. Their widget
+tables live in the development README
+([Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack)).
 
 ---
 
@@ -201,32 +225,38 @@ Standalone O-orbit path node for path-only graphs; the picker contains the same 
 
 | Symptom | Fix |
 |---|---|
-| `sample.py --help` fails in setup step 5 | Usually torch/VGGT: reinstall torch cu130 in the environment, then `pip install --no-deps -e <tools>\vggt-omega-fp16-version` |
-| Checkpoint download refused (gated) | Download `vggt_omega_1b_512.pt` manually from Hugging Face and drop it into `<tools>\vggt-omega\checkpoints` |
-| Workflow shows red nodes | `setup.bat --install-community-nodes`, add Pixaroma/RTX packs via ComfyUI-Manager, install Enndees_Nodepack for tracker/trainer |
-| Picker shows every widget at once | That is the fallback without the adaptive web extension; everything still works - install [Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack) for the adaptive widgets |
-| `Pivot X/Z must place the subject in front...` | Raise `path_pivot_z` above 0.15 |
-| OOM during the H3 pass | Lower the resolution / super-resolution factor or free VRAM (the example uses three `easy cleanGpuUsed` nodes) |
+| `No module named 'depth_anything_3'` | `python -m pip install --no-deps depth-anything-3` (step 3/7 of the setup does it) |
+| DA3 weights not found / first run slow | they download into the Hugging Face cache on first use; re-run and they are local afterwards |
+| Red nodes "Meridian Parameters / Geometry missing" | install this pack (`setup.bat`), restart ComfyUI, and install the community packs with `--install-community-nodes` |
+| The estimate's depth model differs from the render | set `model_size` on **both** nodes to the same value (default: `Depth-Anything-3-Mono-Large`) — the emitted keys are in the estimating model's median units, a mismatch puts the pivot at the wrong depth (the Geometry node warns) |
+| "the max camera speed ends the path at … deg" | that is the speed cap working: more Output Frames, a higher `auto_max_speed`, or `Auto Orbit Coverage = Front only` buy the back visit back |
+| Pseudo-views show holes where the camera sees behind the subject | `back_face_cull` is on by design (no mirrored front); a *tight* `depth_res` and `edge_threshold 0.1` keep silhouettes clean |
+| OOM during the H3 pass | lower the resolution / super-resolution factor or free VRAM (the example uses three `easy cleanGpuUsed` nodes) |
+| `sample.py --help`-style Meridian setup errors | not needed any more: nothing runs `inference/sample.py` — only the LoRAs are read from the Meridian release |
 
 ---
 
 ## Development
 
-The adaptive widget extension (the picker's show/hide logic) and the
-49-unit-test suite live in the development checkout,
-[Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack). This
-install package intentionally ships only what the workflow needs.
+The full unit-test suite ships with the package (no GPU, no model downloads, about 20 seconds):
+
+```
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+The suite covers the camera estimator (path shapes, speed cap, visibility guarantee, view angle /
+coverage), the geometry modes, the fast-depth backend, the path math and the workflow widgets.
 
 ---
 
 ## Licences & credits
 
 - Code in this repository: **MIT** (see `LICENSE`).
-- The Meridian release (MiniMax H3 re-camera model, `recam`/`inference` code, LoRAs, assets): MiniMax H3 Community License - not redistributed here.
-- VGGT-Omega: Meta FAIR Noncommercial Research License with gated weights - not redistributed here; the fp16 fork lives at `venlyrina/vggt-omega-fp16-version`.
+- The Meridian release (MiniMax H3 re-camera model, LoRAs, assets): MiniMax H3 Community License —
+  not redistributed here.
+- Depth Anything v3 and the Depth-Anything family: **Apache-2.0**, distributed via
+  PyPI/Hugging Face — installed on demand, never vendored.
 - ComfyUI and its MiniMax H3 core nodes: ComfyUI / MiniMax.
+- COLMAP 3.11 / GLOMAP 1.2 binaries: their own licences, downloaded by `install.py`.
 - The community packs referenced above keep their own licences.
-
-
-
 
