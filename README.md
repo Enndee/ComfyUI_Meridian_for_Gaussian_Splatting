@@ -53,6 +53,7 @@ to automatically call Lichtfeld for the splatting process.
 | `nodes/enndee_meridian_geometry.py` | **Meridian Geometry (Enndee)** — the fast-depth reprojection node |
 | `nodes/glomap_lichtfeld_node.py`, `lichtfeld_training_node.py` | GLOMAP Lichtfeld Tracker, Lichtfeld Headless Trainer |
 | `nodes/enndee_image_loader.py`, `enndee_resolution_selector.py`, `enndee_resize_modes.py`, `enndee_standby_signal.py`, `enndee_unique_filenames.py`, `enndee_video_frame_extractor.py` | the pack's supporting nodes |
+| `nodes/meridian_prompt_composer.py`, `meridian_geometry.py`, `meridian_ref_conditioning.py`, `meridian_h3_sigmas.py`, `meridian_embed.py`, `meridian_frozen_file.py`, `meridian_embed_baker.py` | the Meridian helper nodes: conditional **Meridian Prompt Composer**, the reference-video geometry, clip-free ref conditioning, the exact H3 sigma grid, and the frozen-embed baker/tools |
 | `nodes/enndee_bin.py`, `enndee_colmap/`, `minimax_h3_promptor/` | binary installer (COLMAP/GLOMAP), vendored COLMAP helpers, MiniMax H3 promptor |
 | `web/js/*.js` | adaptive widget panels (parameters node, image loader, resolution, timeline) |
 | `install.py`, `requirements.txt` | ComfyUI-Manager install: COLMAP/GLOMAP binaries on demand + optional python deps |

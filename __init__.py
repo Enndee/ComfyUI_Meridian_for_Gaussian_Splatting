@@ -69,6 +69,55 @@ except Exception as _e:
     print(f"\033[31m[Enndee] Enndee_StandbyOnSignal unavailable: {_e}\033[0m")
     Enndee_StandbyOnSignal = None
 
+# --- Meridian-specific nodes (conditional prompt, frozen-embed tooling) ---
+try:
+    from meridian_prompt_composer import MeridianPromptComposer
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianPromptComposer unavailable: {_e}\033[0m")
+    MeridianPromptComposer = None
+
+try:
+    from meridian_geometry import MeridianGeometry
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianGeometry unavailable: {_e}\033[0m")
+    MeridianGeometry = None
+
+try:
+    from meridian_ref_conditioning import MeridianRefConditioning
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianRefConditioning unavailable: {_e}\033[0m")
+    MeridianRefConditioning = None
+
+try:
+    from meridian_h3_sigmas import MeridianH3Sigmas
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianH3Sigmas unavailable: {_e}\033[0m")
+    MeridianH3Sigmas = None
+
+try:
+    from meridian_embed import MeridianFrozenPrompt
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianFrozenPrompt unavailable: {_e}\033[0m")
+    MeridianFrozenPrompt = None
+
+try:
+    from meridian_frozen_file import MeridianFrozenPromptFile
+except Exception as _e:
+    print(f"\033[31m[Enndee] MeridianFrozenPromptFile unavailable: {_e}\033[0m")
+    MeridianFrozenPromptFile = None
+
+try:
+    from meridian_embed_baker import (
+        MeridianBakeEmbed,
+        MeridianBakeAllEmbeds,
+        MeridianBakeTextEmbeds,
+    )
+except Exception as _e:
+    print(f"\033[31m[Enndee] Meridian embed bakers unavailable: {_e}\033[0m")
+    MeridianBakeEmbed = None
+    MeridianBakeAllEmbeds = None
+    MeridianBakeTextEmbeds = None
+
 # Global save-behavior hook (no node): strip ComfyUI's running counter and
 # number files only when the target name is already taken. Opt out with the
 # environment variable ENNDEE_KEEP_FILE_COUNTER=1.
@@ -119,6 +168,42 @@ if LichtfeldHeadlessTrainer is not None:
 if Enndee_StandbyOnSignal is not None:
     NODE_CLASS_MAPPINGS["Enndee_StandbyOnSignal"] = Enndee_StandbyOnSignal
     NODE_DISPLAY_NAME_MAPPINGS["Enndee_StandbyOnSignal"] = "Standby On Signal (Enndee)"
+
+if MeridianPromptComposer is not None:
+    NODE_CLASS_MAPPINGS["MeridianPromptComposer"] = MeridianPromptComposer
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianPromptComposer"] = "Meridian Prompt Composer (conditional pictures)"
+
+if MeridianGeometry is not None:
+    NODE_CLASS_MAPPINGS["MeridianGeometry"] = MeridianGeometry
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianGeometry"] = "Meridian Geometry"
+
+if MeridianRefConditioning is not None:
+    NODE_CLASS_MAPPINGS["MeridianRefConditioning"] = MeridianRefConditioning
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianRefConditioning"] = "Meridian Ref Conditioning (no CLIP)"
+
+if MeridianH3Sigmas is not None:
+    NODE_CLASS_MAPPINGS["MeridianH3Sigmas"] = MeridianH3Sigmas
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianH3Sigmas"] = "Meridian H3 Sigmas (student/teacher grid)"
+
+if MeridianFrozenPrompt is not None:
+    NODE_CLASS_MAPPINGS["MeridianFrozenPrompt"] = MeridianFrozenPrompt
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianFrozenPrompt"] = "Meridian Frozen Prompt"
+
+if MeridianFrozenPromptFile is not None:
+    NODE_CLASS_MAPPINGS["MeridianFrozenPromptFile"] = MeridianFrozenPromptFile
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianFrozenPromptFile"] = "Meridian Frozen Prompt (file)"
+
+if MeridianBakeEmbed is not None:
+    NODE_CLASS_MAPPINGS["MeridianBakeEmbed"] = MeridianBakeEmbed
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianBakeEmbed"] = "Meridian Bake Frozen Embed"
+
+if MeridianBakeAllEmbeds is not None:
+    NODE_CLASS_MAPPINGS["MeridianBakeAllEmbeds"] = MeridianBakeAllEmbeds
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianBakeAllEmbeds"] = "Meridian Bake Frozen Embeds (all lengths)"
+
+if MeridianBakeTextEmbeds is not None:
+    NODE_CLASS_MAPPINGS["MeridianBakeTextEmbeds"] = MeridianBakeTextEmbeds
+    NODE_DISPLAY_NAME_MAPPINGS["MeridianBakeTextEmbeds"] = "Meridian Bake Frozen Embeds (text-only, all lengths)"
 
 WEB_DIRECTORY = os.path.join(_pack_dir, "web")
 

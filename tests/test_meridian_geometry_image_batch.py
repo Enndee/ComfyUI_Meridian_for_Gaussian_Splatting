@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 
-NODE_PATH = Path(__file__).resolve().parents[2] / "meridian_geometry.py"
+NODE_PATH = Path(__file__).resolve().parents[1] / "nodes" / "meridian_geometry.py"
 SPEC = importlib.util.spec_from_file_location("meridian_geometry_test", NODE_PATH)
 MERIDIAN_MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MERIDIAN_MODULE)
