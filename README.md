@@ -4,6 +4,12 @@
 *in-process* with **Depth Anything v3** (fast depth) and reprojects the camera path itself — there
 is **no VGGT checkout, no `vggt_omega` checkpoint and no separate python environment** any more.
 
+> **The nodes live in [Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack).**
+> This repository is the installer: `setup.bat` clones the pack (step 1) plus every community pack
+> the example workflow needs (step 7), installs Depth Anything v3, unpacks your Meridian release
+> LoRAs and copies the example workflow to your machine. The node code exists in exactly one place —
+> there is no duplicated `nodes/` folder to keep in sync.
+
 This Repo utilizes the Meridian project and Depth Anything v3 to create custom camera paths for
 static images. Minimax H3 is used to create plausible completions of missing parts of the picture.
 Afterwards GLOMAP/COLMAP is used to prepare a dataset for Gaussian Splatting. A custom node is able
@@ -46,20 +52,19 @@ to automatically call Lichtfeld for the splatting process.
 
 | Path | Content |
 |---|---|
-| `nodes/enndee_meridian_parameters.py` | **Meridian Parameters and Camera (Enndee)** — the args string *and* the camera path (manual styles + automatic estimate) |
-| `nodes/enndee_meridian_auto_camera.py` | the automatic camera: pivot estimate, 45° front circle, view angle / coverage, speed cap, visibility guarantee |
-| `nodes/enndee_meridian_fast_depth.py` | fast-depth backend (Depth Anything v3 / V2) and the in-process reprojection renderer |
-| `nodes/enndee_meridian_camera_path.py` | path math: O orbits, alternating-height pendulum, spiral sweep |
-| `nodes/enndee_meridian_geometry.py` | **Meridian Geometry (Enndee)** — the fast-depth reprojection node |
-| `nodes/glomap_lichtfeld_node.py`, `lichtfeld_training_node.py` | GLOMAP Lichtfeld Tracker, Lichtfeld Headless Trainer |
-| `nodes/enndee_image_loader.py`, `enndee_resolution_selector.py`, `enndee_resize_modes.py`, `enndee_standby_signal.py`, `enndee_unique_filenames.py` | the pack's supporting nodes |
-| `nodes/meridian_prompt_composer.py` | **Meridian Prompt Composer** — the conditional per-picture prompt blocks |
-| `nodes/enndee_bin.py`, `enndee_colmap/` | binary installer (COLMAP/GLOMAP), vendored COLMAP helpers |
-| `web/js/*.js` | adaptive widget panels (parameters node, image loader, resolution) |
-| `install.py`, `requirements.txt` | ComfyUI-Manager install: COLMAP/GLOMAP binaries on demand + optional python deps |
-| `tests/*.py` | the unit-test suite (no model downloads, no GPU) |
-| `examples/Meridian_Splatting_1.0.json` | **the reference workflow for the whole pipeline** |
-| `setup.bat`, `setup/meridian_setup.py` | one-shot setup for a fresh ComfyUI (see below) |
+| `setup.bat`, `setup/meridian_setup.py` | the one-shot setup: clones the **Enndees Nodepack** (that is where the nodes live) + every community pack the example needs, installs Depth Anything v3, unpacks your Meridian release LoRAs, copies the example workflow |
+| `examples/Meridian_Splatting_1.1.json` | **the reference workflow for the whole pipeline** (automatic camera with the O Orbit Angle, 158 frames, sharp-frame selection) |
+| `examples/Meridian_Splatting_1.0.json` | the previous reference workflow (kept for comparison) |
+| `__init__.py` | deliberately registers nothing — it only points at the pack, so an existing `custom_nodes` clone of this repo stays harmless |
+| `LICENSE` | MIT (the node code in the pack is MIT as well) |
+
+**The nodes** — *Meridian Parameters and Camera (Enndee)*, *Meridian Geometry (Enndee)*, *GLOMAP
+Lichtfeld Tracker (Enndee)*, *Lichtfeld Headless Trainer (Enndee)*, *Load & Resize Image (Enndee)*,
+*Resolution Selector (Enndee)*, *Standby On Signal (Enndee)*, *Sharpness Analyzer (Enndee)*,
+*Sharp Frame Selector Top-N (Enndee)*, *Meridian Prompt Composer* and the MiniMax H3 helpers — are
+implemented and documented in the pack:
+
+<https://github.com/Enndee/Enndees_Nodepack>
 
 The node code is MIT licensed. **Meridian, the MiniMax H3 weights and the LoRAs are *not*
 redistributed here** — they are separate, licence-gated downloads (see *Requirements*).
@@ -107,10 +112,30 @@ setup.bat "D:\ComfyUI_windows_portable" --meridian-zip "X:\path\to\Meridian_rele
 `models\vae\minimax_h3_audio_vae_fp32.safetensors` (your own H3 download).
 Step 5/7 of the setup lists whatever is missing.
 
-### 5. Community node packs (optional)
+### 5. Community node packs (installed by the setup)
 
-The example workflow uses **VideoHelperSuite**, **ComfyUI-Easy-Use** and **comfyui-various** —
-`setup.bat` offers to clone them (or pass `--install-community-nodes`).
+`examples/Meridian_Splatting_1.1.json` needs the **Enndees Nodepack** (step 1) plus these public
+packs, which step 7 clones automatically:
+
+| Pack | Repo | Node(s) the example uses |
+|---|---|---|
+| ComfyUI-Sharp-Selector | <https://github.com/ethanfel/ComfyUI-Sharp-Selector> | `SharpnessAnalyzer` |
+| rgthree-comfy | <https://github.com/rgthree/rgthree-comfy> | `Any Switch (rgthree)` |
+| ComfyUI-KJNodes | <https://github.com/kijai/ComfyUI-KJNodes> | `ImageResizeKJv2` |
+| comfyui-various | <https://github.com/jamesWalker55/comfyui-various> | `JWImageResizeToMegapixels`, `JWStringConcat`, `JWDatetimeString` |
+| ComfyUI-Custom-Scripts | <https://github.com/pythongosssss/ComfyUI-Custom-Scripts> | `MathExpression\|pysssss` |
+| VideoHelperSuite | <https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite> | `VHS_VideoCombine` |
+| ComfyUI-Easy-Use | <https://github.com/yamatazen/ComfyUI-Easy-Use> | `easy cleanGpuUsed` |
+| ComfyUI-Pixaroma | <https://github.com/pixaroma/ComfyUI-Pixaroma> | `PixaromaGroupSwitch` |
+| ComfyUI-BRIA_AI-RMBG | <https://github.com/ZHO-ZHO-ZHO/ComfyUI-BRIA_AI-RMBG> | `RMBG` |
+| Nvidia RTX Nodes | <https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI> | `RTXVideoSuperResolution` |
+| ComfyUI_UniBlockSwap | <https://github.com/smthemex/ComfyUI_UniBlockSwap> | `UniBlockSwapTE` |
+| Comfyui-Memory_Cleanup | <https://github.com/LAOGOU-666/Comfyui-Memory_Cleanup> | `VRAMCleanup` |
+| MiniMax H3 MotionCache | <https://github.com/starsFriday/ComfyUI-MiniMax-H3-MotionCache> | `MiniMaxH3MotionCache` |
+| MiniMax H3 Turbo | <https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo> | `MiniMaxH3TurboLoRA`, `MiniMaxH3TurboSampler` |
+| Minimax H3 latent upscaler | <https://github.com/xmarre/Comfyui_Minimax_h3_latent_Upscaler-Plus> | `MinimaxH3LatentUpscaler3D` |
+
+`setup.bat` skips them only if you answer the prompt with `y` (or pass `--skip-community-nodes`).
 
 ---
 
@@ -118,7 +143,7 @@ The example workflow uses **VideoHelperSuite**, **ComfyUI-Easy-Use** and **comfy
 
 ### 1. Get the code
 
-Clone into `ComfyUI\custom_nodes\`, or just run the setup from anywhere:
+The installer can live anywhere — it is not a node pack. Clone it and run it:
 
 ```
 git clone https://github.com/Enndee/ComfyUI_Meridian_for_Gaussian_Splatting.git
@@ -126,19 +151,20 @@ ComfyUI_Meridian_for_Gaussian_Splatting\setup.bat
 ```
 
 `setup.bat` asks for the ComfyUI folder (the one that contains `ComfyUI\` and `python_embeded\`,
-or its parent), offers the community packs, and calls `setup\meridian_setup.py`.
+or its parent) and calls `setup\meridian_setup.py`. **Step 1 clones the nodes** (the Enndees
+Nodepack) into `ComfyUI\custom_nodes\` — this repository itself ships no node code.
 
 ### 2. What the setup does (7 steps, idempotent)
 
 | Step | What it does |
 |---|---|
-| 1/7 | copies this repository into `ComfyUI\custom_nodes\` |
+| 1/7 | clones (or `git pull`s) the **Enndees Nodepack** — the nodes — into `ComfyUI\custom_nodes\` |
 | 2/7 | checks `av` / `numpy` / `torch` in ComfyUI's python |
 | 3/7 | installs **Depth Anything v3** (`pip install --no-deps depth-anything-3`) |
 | 4/7 | unpacks `--meridian-zip` and copies the Meridian LoRAs into `models\loras` |
 | 5/7 | reports the H3 model files the example workflow needs |
 | 6/7 | copies the example workflows to `ComfyUI\user\default\workflows` and rewrites machine-specific `...\Tools\...` paths |
-| 7/7 | (with `--install-community-nodes`) clones VHS / easy-use / various |
+| 7/7 | clones the community packs the example workflow uses (Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, BRIA RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache, H3 Turbo, H3 latent upscaler) |
 
 Useful flags (forwarded by `setup.bat` after the folder argument):
 
@@ -146,16 +172,17 @@ Useful flags (forwarded by `setup.bat` after the folder argument):
 setup.bat "D:\ComfyUI" --check                          # read-only report, change nothing
 setup.bat "D:\ComfyUI" --dry-run                        # print every command, run none
 setup.bat "D:\ComfyUI" --meridian-zip "X:\Meridian.zip" # unpack the release + copy its LoRAs
-setup.bat "D:\ComfyUI" --install-community-nodes        # clone the public example packs
+setup.bat "D:\ComfyUI" --skip-community-nodes           # do not clone the community packs
 setup.bat "D:\ComfyUI" --no-workflow                    # do not copy the example workflows
 ```
 
 ### 3. Restart and go
 
-Restart ComfyUI, open **`Meridian_Splatting_1.0`** (Workflow menu) and queue it. The first run
+Restart ComfyUI, open **`Meridian_Splatting_1.1`** (Workflow menu) and queue it. The first run
 downloads the DA3 weights into the Hugging Face cache; everything else is user-provided (models
 above). The node defaults in that example are also the *node defaults*:
 **158 frames**, `camera_mode = Automatic`, `auto_max_speed 12`, `auto_subject_fill 40`,
+`auto_orbit_angle 45` (the front O's angular radius — lower it for a flatter, less steep orbit),
 `model_size = Depth-Anything-3-Mono-Large`, geometry `canvas_mode = custom 832x480`,
 `depth_res = 1920`, `edge_threshold 0.1`, `back_face_cull` on.
 
@@ -229,7 +256,7 @@ tables live in the development README
 |---|---|
 | `No module named 'depth_anything_3'` | `python -m pip install --no-deps depth-anything-3` (step 3/7 of the setup does it) |
 | DA3 weights not found / first run slow | they download into the Hugging Face cache on first use; re-run and they are local afterwards |
-| Red nodes "Meridian Parameters / Geometry missing" | install this pack (`setup.bat`), restart ComfyUI, and install the community packs with `--install-community-nodes` |
+| Red nodes "Meridian Parameters / Geometry missing" | run `setup.bat` — step 1 clones the Enndees Nodepack (where the nodes live) and step 7 the community packs; then restart ComfyUI |
 | The estimate's depth model differs from the render | set `model_size` on **both** nodes to the same value (default: `Depth-Anything-3-Mono-Large`) — the emitted keys are in the estimating model's median units, a mismatch puts the pivot at the wrong depth (the Geometry node warns) |
 | "the max camera speed ends the path at … deg" | that is the speed cap working: more Output Frames, a higher `auto_max_speed`, or `Auto Orbit Coverage = Front only` buy the back visit back |
 | Pseudo-views show holes where the camera sees behind the subject | `back_face_cull` is on by design (no mirrored front); a *tight* `depth_res` and `edge_threshold 0.1` keep silhouettes clean |
@@ -240,14 +267,17 @@ tables live in the development README
 
 ## Development
 
-The full unit-test suite ships with the package (no GPU, no model downloads, about 20 seconds):
+The node code, the widget panels and the unit-test suite live in the pack
+([Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack)) — clone it and run
+(no GPU, no model downloads, about 45 seconds):
 
 ```
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
 The suite covers the camera estimator (path shapes, speed cap, visibility guarantee, view angle /
-coverage), the geometry modes, the fast-depth backend, the path math and the workflow widgets.
+coverage, the O Orbit Angle), the geometry modes, the fast-depth backend, the path math, the sharp
+selector and the workflow widgets.
 
 ---
 

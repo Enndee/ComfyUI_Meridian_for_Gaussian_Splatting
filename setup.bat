@@ -66,8 +66,14 @@ goto collect_args
 
 set "EXTRA="
 if not "%FWD%"=="" goto run
-set /p "COMM=Install the public community node packs used by the example workflow (VHS / easy-use / various)? [y/N]: "
-if /i "!COMM!"=="y" set "EXTRA=--install-community-nodes"
+echo.
+echo   Step 1 clones the Enndees Nodepack - that is where the nodes live.
+echo   Step 7 clones the community packs the example workflow uses:
+echo     Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS,
+echo     easy-use, Pixaroma, BRIA RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup,
+echo     H3 MotionCache, H3 Turbo, H3 latent upscaler.
+set /p "COMM=Skip the community node packs (step 7)? [y/N]: "
+if /i "!COMM!"=="y" set "EXTRA=--skip-community-nodes"
 
 :run
 "!PY!" "%REPO_DIR%setup\meridian_setup.py" --comfy-root "!ROOT!" !FWD! !EXTRA!

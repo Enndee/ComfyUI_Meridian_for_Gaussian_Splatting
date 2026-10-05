@@ -1,19 +1,29 @@
+"""ComfyUI Meridian for Gaussian Splatting - installer / distribution repository.
+
+The node code lives in the **Enndees Nodepack** (single source of truth):
+
+    https://github.com/Enndee/Enndees_Nodepack
+
+Nothing is registered here on purpose: this repository only ships the one-shot
+setup (``setup.bat`` / ``setup/meridian_setup.py``), the example workflows and
+the documentation, so the nodes exist in exactly one place.
+
+If you cloned this repository into ``ComfyUI\\custom_nodes\\`` that is harmless
+(this module registers no nodes) - but the actual nodes come from the pack: run
+``setup.bat`` (it clones the pack next to this folder) or clone
+https://github.com/Enndee/Enndees_Nodepack into ``custom_nodes`` yourself.
 """
-Enndees Nodepack - Custom Nodes for ComfyUI
-GLOMAP Camera Tracker with advanced mask handling for Lichtfeld Studio.
-"""
 
-import sys
-import os
+print("\033[96m[Enndee] ComfyUI_Meridian_for_Gaussian_Splatting: the nodes live in the "
+      "Enndees Nodepack (https://github.com/Enndee/Enndees_Nodepack) - run setup.bat "
+      "to install them\033[0m")
 
-print("\033[96m[Enndee] Enndees Nodepack loaded\033[0m")
+# Present but empty: the custom-node loader then does not warn about a missing
+# NODE_CLASS_MAPPINGS, and no node ID is registered twice next to the pack.
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
 
-# Add this directory and nodes/ to path for imports.
-# The COLMAP/GLOMAP helpers are vendored (enndee_colmap/) so the pack is
-# fully self contained - no external comfyui_colmap is needed.
-_pack_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _pack_dir)
-sys.path.insert(0, os.path.join(_pack_dir, "nodes"))
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 
 try:
     from glomap_lichtfeld_node import GLOMAPLichtfeldTracker

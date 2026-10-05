@@ -4,19 +4,25 @@ This script is idempotent: run it again after updates or a partial install and
 it only fills the gaps. Run it with the portable ComfyUI python
 (``setup.bat`` does that for you) or any Python 3.10+.
 
+The nodes themselves live in the **Enndees Nodepack**
+(https://github.com/Enndee/Enndees_Nodepack) - this repository is only the
+installer, so there is exactly one place that owns the node code.
+
 What it does:
 
-1. makes sure this repository is installed into ``custom_nodes``,
+1. clones (or updates) the **Enndees Nodepack** into ``custom_nodes``,
 2. checks the ComfyUI-side dependencies (av / numpy / torch are shipped),
 3. installs **Depth Anything v3** into ComfyUI's python (``--no-deps``) - the
-   fast-depth backend the Meridian Geometry node reprojections with. VGGT,
-   its checkpoint and the separate ``meridian-vggt`` environment are gone.
+   fast-depth backend the Meridian Geometry node reprojections with.
 4. unpacks a Meridian release zip and copies its LoRAs into ``models\\loras``
    (licence-gated, they are not redistributed here),
 5. reports the model files the workflow needs,
 6. copies the example workflows into the ComfyUI user workflows folder and
    rewrites every machine-specific path to this machine,
-7. optionally clones the public community packs the example uses.
+7. clones the community node packs the example workflow uses (Sharp-Selector,
+   rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, BRIA
+   RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache, H3 Turbo,
+   H3 latent upscaler). ``--skip-community-nodes`` turns this off.
 
 Use ``--check`` for a read-only report (no installs, no downloads). Pass
 ``--meridian-zip <file>`` to unpack a Meridian release zip; its LoRAs are
@@ -35,15 +41,32 @@ from pathlib import Path
 
 REPO_URL = "https://github.com/Enndee/ComfyUI_Meridian_for_Gaussian_Splatting"
 REPO_NAME = "ComfyUI_Meridian_for_Gaussian_Splatting"
+# The node code lives in the Enndees Nodepack (single source of truth) - this
+# repository only ships the installer, the example workflows and the docs.
+PACK_URL = "https://github.com/Enndee/Enndees_Nodepack"
+PACK_NAME = "Enndees_Nodepack"
+PACK_MARKER = ("nodes", "enndee_meridian_parameters.py")
 DA3_PACKAGE = "depth-anything-3"
-# The geometry node reprojections in-process through fast depth (Depth Anything v3 by default),
-# so the old `meridian-vggt` environment, the VGGT checkouts and the vggt_omega checkpoint are gone.
-# Packs used by examples/meridian_customcampath2.json that are public and safe
-# to clone. The remaining third-party nodes are listed by the README instead.
+# Every community pack examples/Meridian_Splatting_1.1.json needs (all Enndee_* /
+# Meridian* nodes come from the pack above). Public and safe to clone; installed
+# by default, `--skip-community-nodes` turns it off.
 COMMUNITY_PACKS = (
+    ("ComfyUI-Sharp-Selector", "https://github.com/ethanfel/ComfyUI-Sharp-Selector"),
+    ("rgthree-comfy", "https://github.com/rgthree/rgthree-comfy"),
+    ("comfyui-kjnodes", "https://github.com/kijai/ComfyUI-KJNodes"),
+    ("comfyui-various", "https://github.com/jamesWalker55/comfyui-various"),
+    ("comfyui-custom-scripts", "https://github.com/pythongosssss/ComfyUI-Custom-Scripts"),
     ("comfyui-videohelpersuite", "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"),
     ("comfyui-easy-use", "https://github.com/yamatazen/ComfyUI-Easy-Use"),
-    ("comfyui-various", "https://github.com/jamesWalker55/comfyui-various"),
+    ("ComfyUI-Pixaroma", "https://github.com/pixaroma/ComfyUI-Pixaroma"),
+    ("ComfyUI-BRIA_AI-RMBG", "https://github.com/ZHO-ZHO-ZHO/ComfyUI-BRIA_AI-RMBG"),
+    ("comfyui_nvidia_rtx_nodes", "https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI"),
+    ("uniblockswap", "https://github.com/smthemex/ComfyUI_UniBlockSwap"),
+    ("comfyui_memory_cleanup", "https://github.com/LAOGOU-666/Comfyui-Memory_Cleanup"),
+    ("minimax-h3-motioncache", "https://github.com/starsFriday/ComfyUI-MiniMax-H3-MotionCache"),
+    ("comfyui-minimax-h3-turbo", "https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo"),
+    ("comfyui-minimax-h3-latent-upscaler",
+     "https://github.com/xmarre/Comfyui_Minimax_h3_latent_Upscaler-Plus"),
 )
 
 GREEN = "\033[92m"
@@ -148,23 +171,26 @@ class Paths:
         return self.selection_dir / "Tools"
 
 
-def install_nodes(paths, dry=False):
-    say("[1/7] ComfyUI custom node installation", BLUE)
-    target = paths.custom_nodes / REPO_NAME
-    if target.resolve() == paths.repo_dir.resolve():
-        ok(f"already installed at {target}")
+def install_pack(paths, dry=False):
+    """Clone (or update) the Enndees Nodepack - the only place the nodes live."""
+    say("[1/7] ComfyUI custom node installation (Enndees Nodepack)", BLUE)
+    target = paths.custom_nodes / PACK_NAME
+    marker = target.joinpath(*PACK_MARKER)
+    if marker.is_file():
+        if (target / ".git").is_dir() and has_git():
+            run(["git", "-C", str(target), "pull", "--ff-only"], dry=dry, check=False)
+        ok(f"{PACK_NAME} already installed at {target}")
         return
-    if target.exists():
-        ok(f"already installed at {target} (this copy: {paths.repo_dir})")
+    if not has_git():
+        note(f"git missing; clone {PACK_URL} into {target} manually")
         return
-    say(f"  copying {paths.repo_dir} -> {target}")
-    if dry:
+    say(f"  cloning {PACK_URL} -> {target}")
+    run(["git", "clone", PACK_URL, str(target)], dry=dry, check=False)
+    if not dry and not marker.is_file():
+        fail(f"could not clone {PACK_URL}")
+        print(f"       download it manually into {target}")
         return
-    shutil.copytree(
-        paths.repo_dir, target,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
-    )
-    ok(f"installed into {target} - restart ComfyUI to load the nodes")
+    ok(f"cloned {PACK_NAME} into {target} - restart ComfyUI to load the nodes")
 
 
 def check_comfy_dependencies(paths):
@@ -315,18 +341,21 @@ def report_user_specific_paths(data, paths):
 
 
 def install_community_packs(paths, args, dry=False):
-    if not args.install_community_nodes:
+    if getattr(args, "skip_community_nodes", False):
+        note("--skip-community-nodes: the community packs were not touched")
         return
     say("[7/7] Community node packs used by the example workflow", BLUE)
+    if not has_git():
+        note("git missing; clone these manually:")
+        for name, url in COMMUNITY_PACKS:
+            print(f"         {name:<40} {url}")
+        return
     for name, url in COMMUNITY_PACKS:
         target = paths.custom_nodes / name
         if target.is_dir():
             ok(f"{name} already present")
             continue
-        if not has_git():
-            note(f"git missing; clone {url} into {target} manually")
-            continue
-        run(["git", "clone", "--depth", "1", url, target], dry=dry, check=False)
+        run(["git", "clone", "--depth", "1", url, str(target)], dry=dry, check=False)
 
 
 def print_report(paths):
@@ -468,7 +497,9 @@ def main():
     parser.add_argument("--meridian-zip",
                         help="a Meridian release .zip to extract into <tools>\\Meridian")
     parser.add_argument("--install-community-nodes", action="store_true",
-                        help="also clone the public node packs the example workflow uses")
+                        help="deprecated: the community packs are installed by default now")
+    parser.add_argument("--skip-community-nodes", action="store_true",
+                        help="do not clone the community node packs the example workflow uses")
     args = parser.parse_args()
 
     say("ComfyUI Meridian for Gaussian Splatting - setup", BLUE)
@@ -478,7 +509,7 @@ def main():
         say("--check finished (nothing was modified)", GREEN)
         return 0
 
-    install_nodes(paths, dry=args.dry_run)
+    install_pack(paths, dry=args.dry_run)
     check_comfy_dependencies(paths)
     ensure_fast_depth(paths, dry=args.dry_run)
     ensure_meridian(paths, args, dry=args.dry_run)
@@ -487,8 +518,11 @@ def main():
     install_community_packs(paths, args, dry=args.dry_run)
 
     say("Summary", BLUE)
-    ok(f"nodes installed in {paths.custom_nodes / REPO_NAME}")
+    ok(f"nodes installed in {paths.custom_nodes / PACK_NAME}")
     ok("Depth Anything v3 reprojection: no VGGT, no separate environment")
+    if not args.skip_community_nodes:
+        ok(f"{len(COMMUNITY_PACKS)} community packs ensured "
+           "(Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS, easy-use, ...)")
     say("Restart ComfyUI, open the copied workflow and queue it. The DA3 model weights "
         "download into the Hugging Face cache on first use; everything else is "
         "user-provided (see the README).", GREEN)
