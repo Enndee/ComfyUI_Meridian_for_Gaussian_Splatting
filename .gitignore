@@ -1,9 +1,6 @@
 # ── Downloaded COLMAP / GLOMAP binaries (created by install.py on demand) ──
 bin/
 
-# ── User configuration (may contain API keys) ──
-minimax_h3_promptor/config.json
-
 # ── Python ──
 __pycache__/
 *.py[cod]

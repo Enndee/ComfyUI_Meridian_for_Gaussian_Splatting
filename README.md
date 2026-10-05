@@ -52,10 +52,10 @@ to automatically call Lichtfeld for the splatting process.
 | `nodes/enndee_meridian_camera_path.py` | path math: O orbits, alternating-height pendulum, spiral sweep |
 | `nodes/enndee_meridian_geometry.py` | **Meridian Geometry (Enndee)** — the fast-depth reprojection node |
 | `nodes/glomap_lichtfeld_node.py`, `lichtfeld_training_node.py` | GLOMAP Lichtfeld Tracker, Lichtfeld Headless Trainer |
-| `nodes/enndee_image_loader.py`, `enndee_resolution_selector.py`, `enndee_resize_modes.py`, `enndee_standby_signal.py`, `enndee_unique_filenames.py`, `enndee_video_frame_extractor.py` | the pack's supporting nodes |
-| `nodes/meridian_prompt_composer.py`, `meridian_geometry.py`, `meridian_ref_conditioning.py`, `meridian_h3_sigmas.py`, `meridian_embed.py`, `meridian_frozen_file.py`, `meridian_embed_baker.py` | the Meridian helper nodes: conditional **Meridian Prompt Composer**, the reference-video geometry, clip-free ref conditioning, the exact H3 sigma grid, and the frozen-embed baker/tools |
-| `nodes/enndee_bin.py`, `enndee_colmap/`, `minimax_h3_promptor/` | binary installer (COLMAP/GLOMAP), vendored COLMAP helpers, MiniMax H3 promptor |
-| `web/js/*.js` | adaptive widget panels (parameters node, image loader, resolution, timeline) |
+| `nodes/enndee_image_loader.py`, `enndee_resolution_selector.py`, `enndee_resize_modes.py`, `enndee_standby_signal.py`, `enndee_unique_filenames.py` | the pack's supporting nodes |
+| `nodes/meridian_prompt_composer.py` | **Meridian Prompt Composer** — the conditional per-picture prompt blocks |
+| `nodes/enndee_bin.py`, `enndee_colmap/` | binary installer (COLMAP/GLOMAP), vendored COLMAP helpers |
+| `web/js/*.js` | adaptive widget panels (parameters node, image loader, resolution) |
 | `install.py`, `requirements.txt` | ComfyUI-Manager install: COLMAP/GLOMAP binaries on demand + optional python deps |
 | `tests/*.py` | the unit-test suite (no model downloads, no GPU) |
 | `examples/Meridian_Splatting_1.0.json` | **the reference workflow for the whole pipeline** |
@@ -215,8 +215,8 @@ the point cloud and renders the camera path from it — all inside ComfyUI's pyt
 **GLOMAP Lichtfeld Tracker (Enndee)** turns a frame sequence into a ready-to-train Lichtfeld Studio
 dataset (global SfM with the vendored COLMAP/GLOMAP builds that `install.py` downloads);
 **Lichtfeld Headless Trainer (Enndee)** runs the training and exports `.ply`/`.sog`/`.spz`;
-**Load & Resize Image** / **Resolution Selector** / **Video Frame Extractor + Audio** /
-**Standby On Signal** / **MiniMax H3 Direct Promptor** are the workflow helpers. Their widget
+**Load & Resize Image** / **Resolution Selector** / **Standby On Signal** are the workflow
+helpers. Their widget
 tables live in the development README
 ([Enndee/Enndees_Nodepack](https://github.com/Enndee/Enndees_Nodepack)).
 

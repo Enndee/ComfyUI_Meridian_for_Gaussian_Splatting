@@ -617,7 +617,7 @@ def render_depth_aligned(first, device, model_size="Depth-Anything-V2-Small-hf",
                      follow the same cap.
 
     Returns exactly what the VGGT geometry pass returns - (source, render, width, height, length) -
-    so the pair drops straight into MeridianRefConditioning as `<Video 1>` / `<Video 2>`.
+    so the pair can be wired as `<Video 1>` / `<Video 2>` reference videos.
     """
     settings = dict(default_camera_settings())
     if camera:

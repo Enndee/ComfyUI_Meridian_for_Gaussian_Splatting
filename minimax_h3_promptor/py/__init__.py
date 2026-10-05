@@ -1,1 +1,0 @@
-"""Python helpers for the vendored MiniMax H3 Direct Promptor node."""

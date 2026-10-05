@@ -133,7 +133,7 @@ AUTO_WIDGET_NAMES = ("auto_target", "auto_max_speed", "auto_path_mode", "auto_su
 
 
 def build_meridian_arguments(output_frames):
-    """Build the argument string consumed by ``MeridianGeometry.args_override``.
+    """Build the argument string consumed by ``Enndee_MeridianGeometry.args_override``.
 
     The fast-depth backend needs `--frames` (the camera path always carries the same count) and
     nothing else from this node: back-face culling lives on the Geometry node's own Back-Face
@@ -148,7 +148,7 @@ def build_meridian_arguments(output_frames):
             f"Unsupported Meridian output length {frames}; "
             f"choose one of {', '.join(OUTPUT_FRAME_OPTIONS)}."
         )
-    # MeridianGeometry uses shlex.split() to pass this text to the fast-depth backend.
+    # The Geometry node uses shlex.split() to pass this text to the fast-depth backend.
     return shlex.join(["--frames", str(frames)])
 
 
