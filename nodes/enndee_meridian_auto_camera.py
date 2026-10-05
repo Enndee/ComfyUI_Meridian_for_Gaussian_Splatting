@@ -80,10 +80,34 @@ FRONT_ORBIT_RISE = 0.25           # share *of the front loop* spent rising from 
 # import them - they now all mean the one circle radius.
 FRONT_ORBIT_AMPLITUDE = 45.0      # deg, the front O's radius at scale 1 (yaw AND elevation)
 FRONT_ORBIT_LIMIT = 60.0          # deg, the furthest the fit may grow it (gimbal-safe)
+FRONT_ORBIT_ANGLE_DEFAULT = FRONT_ORBIT_AMPLITUDE   # deg, the node's "O Orbit Angle" default
+FRONT_ORBIT_ANGLE_MIN = 5.0       # deg, below this the front O is barely a loop
+FRONT_ORBIT_GROWTH = FRONT_ORBIT_LIMIT / FRONT_ORBIT_AMPLITUDE   # 60/45 - the built-in headroom
 FRONT_YAW_AMPLITUDE = FRONT_ORBIT_AMPLITUDE     # deprecated aliases (the O is a circle now)
 FRONT_ELEVATION = FRONT_ORBIT_AMPLITUDE
 FRONT_YAW_LIMIT = FRONT_ORBIT_LIMIT
 FRONT_ELEVATION_LIMIT = FRONT_ORBIT_LIMIT
+
+# The node's "O Orbit Angle" widget overrides the radius for one estimate. The active value is a
+# module global so the deep helpers (`front_amplitudes` / `_amplitude_ceiling`) do not have to
+# thread it through every signature; `estimate_camera_path` sets and restores it around the call.
+_ACTIVE_FRONT_ORBIT_AMPLITUDE = FRONT_ORBIT_AMPLITUDE
+
+
+def front_orbit_amplitude():
+    """The front O's angular radius (deg) in effect for the estimate being built."""
+    return _ACTIVE_FRONT_ORBIT_AMPLITUDE
+
+
+def resolve_front_orbit_amplitude(degrees):
+    """Clamp an O Orbit Angle widget value; None (or <= 0) keeps the built-in radius."""
+    if degrees is None:
+        return FRONT_ORBIT_AMPLITUDE
+    value = _finite(degrees, "O Orbit Angle")
+    if value <= 0.0:
+        return FRONT_ORBIT_AMPLITUDE
+    return min(FRONT_ORBIT_LIMIT, max(FRONT_ORBIT_ANGLE_MIN, value))
+
 
 # Subject framing: the orbit distance is solved so the subject covers `auto_subject_fill` percent of
 # the frame *area* (projected bounding box, 1 %/99 % percentiles plus a silhouette margin), and the
@@ -451,7 +475,7 @@ def front_amplitudes(scale=1.0, size=1.0):
     radius up to `FRONT_ORBIT_LIMIT` (gimbal-safe); it never swings past it.
     """
     size = max(1e-3, float(size))
-    amplitude = min(FRONT_ORBIT_LIMIT, FRONT_ORBIT_AMPLITUDE * float(scale) * size)
+    amplitude = min(FRONT_ORBIT_LIMIT, front_orbit_amplitude() * float(scale) * size)
     return amplitude, amplitude
 
 
@@ -681,13 +705,14 @@ def _room_distance(pool, surface, pivot, distance, size, height, margin_px, orbi
 
 
 def _amplitude_ceiling(size):
-    """Largest amplitude scale the view limits allow (FRONT_YAW_LIMIT / _ELEVATION_LIMIT).
+    """Largest amplitude scale the view limits allow (the built-in headroom over the O's angle).
 
-    One definition for the fit's ladder, the visibility pass and the console hint, so a change to
-    the limits can never leave one of them behind.
+    The gimbal-safe ceiling (`FRONT_ORBIT_LIMIT`) fixes how far the fit may grow the O above the
+    node's O Orbit Angle, so this ratio is the same whatever angle is set - a smaller angle yields a
+    proportionally smaller orbit. One definition for the fit's ladder, the visibility pass and the
+    console hint, so a change to the limits can never leave one of them behind.
     """
-    return min(FRONT_YAW_LIMIT / FRONT_YAW_AMPLITUDE,
-               FRONT_ELEVATION_LIMIT / FRONT_ELEVATION) / max(1e-3, float(size))
+    return FRONT_ORBIT_GROWTH / max(1e-3, float(size))
 
 
 def subject_box(surface):
@@ -2098,7 +2123,36 @@ def estimate_camera_path(reference, frames, target=SUBJECT_TARGET, max_speed=DEF
                          subject_mask=None, model_size="", depth_res=AUTO_DEPTH_RES,
                          device=None, depth_fn=None, pivot_offset=(0.0, 0.0, 0.0),
                          orbit_distance=None, orbit_size=None, subject_fill=None, orbit_end=None,
-                         direction=ORBIT_DIRECTION_DEFAULT, view_angle=None, coverage=None):
+                         direction=ORBIT_DIRECTION_DEFAULT, view_angle=None, coverage=None,
+                         orbit_amplitude=None):
+    """(signal JSON, summary) for one still, with the node's O Orbit Angle applied.
+
+    `orbit_amplitude` (deg) is the front O's angular radius - the swing AND the rise, because the O
+    is one circle. It is the node's "O Orbit Angle" widget: a smaller value keeps the automatic
+    subject orbit flatter / less steep (and narrower), a larger one climbs higher and reaches
+    further round. `None` keeps the built-in `FRONT_ORBIT_AMPLITUDE`; a value is clamped to
+    `FRONT_ORBIT_ANGLE_MIN .. FRONT_ORBIT_LIMIT`. Everything else is documented on
+    `_estimate_camera_path`, which does the work.
+    """
+    global _ACTIVE_FRONT_ORBIT_AMPLITUDE
+    previous = _ACTIVE_FRONT_ORBIT_AMPLITUDE
+    _ACTIVE_FRONT_ORBIT_AMPLITUDE = resolve_front_orbit_amplitude(orbit_amplitude)
+    try:
+        return _estimate_camera_path(
+            reference, frames, target=target, max_speed=max_speed, subject_mask=subject_mask,
+            model_size=model_size, depth_res=depth_res, device=device, depth_fn=depth_fn,
+            pivot_offset=pivot_offset, orbit_distance=orbit_distance, orbit_size=orbit_size,
+            subject_fill=subject_fill, orbit_end=orbit_end, direction=direction,
+            view_angle=view_angle, coverage=coverage)
+    finally:
+        _ACTIVE_FRONT_ORBIT_AMPLITUDE = previous
+
+
+def _estimate_camera_path(reference, frames, target=SUBJECT_TARGET, max_speed=DEFAULT_MAX_SPEED,
+                          subject_mask=None, model_size="", depth_res=AUTO_DEPTH_RES,
+                          device=None, depth_fn=None, pivot_offset=(0.0, 0.0, 0.0),
+                          orbit_distance=None, orbit_size=None, subject_fill=None, orbit_end=None,
+                          direction=ORBIT_DIRECTION_DEFAULT, view_angle=None, coverage=None):
     """(signal JSON, summary) for one still: geometric pivot, automatic path, collision guard.
 
     The pivot is the target's **cylindrical centre**: a robust vertical-cylinder fit of the depth

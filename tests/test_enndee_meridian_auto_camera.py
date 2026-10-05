@@ -25,6 +25,9 @@ from enndee_meridian_auto_camera import (  # noqa: E402
     FIT_GROW_STEP,
     FRONT_ELEVATION,
     FRONT_ELEVATION_LIMIT,
+    FRONT_ORBIT_AMPLITUDE,
+    FRONT_ORBIT_ANGLE_MIN,
+    FRONT_ORBIT_LIMIT,
     FRONT_ORBIT_RISE,
     FRONT_YAW_AMPLITUDE,
     FRONT_YAW_LIMIT,
@@ -60,6 +63,7 @@ from enndee_meridian_auto_camera import (  # noqa: E402
     format_summary,
     front_amplitudes,
     front_camera,
+    front_orbit_amplitude,
     geometric_pivot,
     guard_collisions,
     lap_span_for_end,
@@ -67,6 +71,7 @@ from enndee_meridian_auto_camera import (  # noqa: E402
     pivot_radius,
     probe_surface,
     project_points,
+    resolve_front_orbit_amplitude,
     scene_coverage,
     scene_samples,
     scene_survey_fill,
@@ -1553,6 +1558,45 @@ class AutoCameraOrbitShapeTests(unittest.TestCase):
         self.assertGreater(max(azimuths), ORBIT_COVERAGE_DEGREES + 45.0)   # a lap, not 270+2A
         self.assertAlmostEqual(max(elevations[split:]), REST_ELEVATION_HIGH, delta=0.5)  # back crane
         self.assertAlmostEqual(azimuths[0], 0.0, delta=1e-6)         # still opens on the front pose
+
+
+class AutoCameraOrbitAngleTests(unittest.TestCase):
+    """The node's O Orbit Angle (`orbit_amplitude`) scales the front O for one estimate."""
+
+    def test_resolve_clamps_the_widget_value(self):
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(None), FRONT_ORBIT_AMPLITUDE)
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(0.0), FRONT_ORBIT_AMPLITUDE)
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(-10.0), FRONT_ORBIT_AMPLITUDE)
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(1.0), FRONT_ORBIT_ANGLE_MIN)
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(90.0), FRONT_ORBIT_LIMIT)
+        self.assertAlmostEqual(resolve_front_orbit_amplitude(30.0), 30.0)
+
+    def test_the_override_is_active_inside_the_estimate_and_then_restored(self):
+        seen = []
+
+        def depth_fn(reference):
+            seen.append(front_orbit_amplitude())
+            return _depth_with_subject()
+
+        self.assertAlmostEqual(front_orbit_amplitude(), FRONT_ORBIT_AMPLITUDE, places=6)
+        _estimate(None, depth_fn=depth_fn, orbit_amplitude=25.0)
+        self.assertEqual(seen, [25.0])            # the radius was in effect while the path was built
+        self.assertAlmostEqual(front_orbit_amplitude(), FRONT_ORBIT_AMPLITUDE, places=6)
+        _estimate(None, depth_fn=depth_fn)        # no widget -> the built-in radius
+        self.assertAlmostEqual(seen[-1], FRONT_ORBIT_AMPLITUDE, places=6)
+
+    def test_a_smaller_angle_scales_the_front_orbit_down(self):
+        """The fit keeps its headroom, so the flown O scales with the widget value."""
+        def front_span(signal):
+            keys = json.loads(signal)["path"]
+            pivot = keys[0]["look"]
+            return max(abs(_orbit_angles(key["pos"], pivot)[0]) for key in keys)
+
+        narrow = front_span(_estimate(_depth_with_subject(), subject_fill=40.0, max_speed=0.5,
+                                      orbit_amplitude=20.0)[0])
+        wide = front_span(_estimate(_depth_with_subject(), subject_fill=40.0, max_speed=0.5,
+                                    orbit_amplitude=45.0)[0])
+        self.assertLess(narrow, wide)
 
 
 if __name__ == "__main__":

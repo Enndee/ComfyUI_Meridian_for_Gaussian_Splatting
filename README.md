@@ -183,6 +183,7 @@ The interesting automatic-mode widgets (defaults = the `Meridian_Splatting_1.0` 
 | `auto_orbit_view_angle` | `0` | azimuth the front circle is centred on: 0 frontal, +90 viewer-left, 180 back, 270 viewer-right |
 | `auto_orbit_coverage` | `Front and Back` | `Front only` = the circle alone; `Front and Back` = circle + level connection + the far orbit's loop (9 → 12 → 3 → 6 → 8 o'clock) |
 | `auto_orbit_direction` | `counter-clockwise` | mirrors the whole path |
+| `auto_orbit_angle` | `45` | front O-orbit angular radius in deg (the swing AND the rise - the O is one circle); smaller = flatter / less steep. The speed fit may still grow it a little (gimbal-safe); clamped to `5`-`60` |
 | `model_size` | `Depth-Anything-3-Mono-Large` | depth model of the estimate — must match the Geometry node, or the keys are in the wrong units |
 | `auto_pivot_x/y/z` | `0` | final aim offset in content radii (applied last, cannot be cancelled by the solves) |
 

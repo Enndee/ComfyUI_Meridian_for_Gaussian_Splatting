@@ -48,6 +48,9 @@ from enndee_meridian_auto_camera import (
     AUTO_TARGETS,
     COLLISION_MARGIN,
     DEFAULT_MAX_SPEED,
+    FRONT_ORBIT_ANGLE_DEFAULT,
+    FRONT_ORBIT_ANGLE_MIN,
+    FRONT_ORBIT_LIMIT,
     ORBIT_COVERAGE_DEFAULT,
     ORBIT_COVERAGE_DEGREES,
     ORBIT_COVERAGES,
@@ -129,7 +132,7 @@ PATH_WIDGET_NAMES = (
 AUTO_WIDGET_NAMES = ("auto_target", "auto_max_speed", "auto_path_mode", "auto_subject_fill",
                      "auto_orbit_distance", "auto_orbit_size", "auto_orbit_end",
                      "auto_orbit_direction", "auto_orbit_view_angle", "auto_orbit_coverage",
-                     "auto_pivot_x", "auto_pivot_y", "auto_pivot_z")
+                     "auto_pivot_x", "auto_pivot_y", "auto_pivot_z", "auto_orbit_angle")
 
 
 def build_meridian_arguments(output_frames):
@@ -410,6 +413,26 @@ class MeridianParametersAndCamera:
                         f"Max Speed buy it back)."
                     ),
                 }),
+                # The front O's angular radius, appended last (same reason as the shape widgets
+                # above): the O is ONE circle, so this is the swing AND the rise - a smaller value
+                # keeps the automatic subject orbit flatter / less steep. Hidden with the automatic
+                # group by the JS panel.
+                "auto_orbit_angle": ("FLOAT", {
+                    "default": round(FRONT_ORBIT_ANGLE_DEFAULT, 1),
+                    "min": FRONT_ORBIT_ANGLE_MIN, "max": FRONT_ORBIT_LIMIT, "step": 5.0,
+                    "tooltip": (
+                        f"Automatic camera (subject target): the front O-orbit's angular radius in "
+                        f"degrees - its swing AND its rise, because the O is one circle "
+                        f"({FRONT_ORBIT_ANGLE_DEFAULT:g} deg both ways by default). The camera rises "
+                        f"this far to the top of the O and swings this far to each side, so a "
+                        f"SMALLER value keeps the orbit flatter and less steep (and narrower), a "
+                        f"larger one climbs higher and reaches further round the subject. The speed "
+                        f"fit may still grow the loop a little above this when the budget allows "
+                        f"(up to the gimbal-safe ceiling). Clamped to "
+                        f"{FRONT_ORBIT_ANGLE_MIN:g}-{FRONT_ORBIT_LIMIT:g} deg. This is the live shape "
+                        f"control - Auto Orbit Size / End are deprecated."
+                    ),
+                }),
             },
             "optional": {
                 "reference_image": ("IMAGE", {
@@ -504,6 +527,8 @@ class MeridianParametersAndCamera:
                 # is shown) shape the estimated path; see the widget tooltips.
                 view_angle=float(kwargs["auto_orbit_view_angle"]),
                 coverage=kwargs["auto_orbit_coverage"],
+                # O Orbit Angle: the front O's angular radius (swing AND rise). Smaller = flatter.
+                orbit_amplitude=float(kwargs["auto_orbit_angle"]),
             )
             print(f"[Enndee] Meridian {format_summary(summary)}", flush=True)
             return signal

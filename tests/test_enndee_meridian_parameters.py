@@ -288,7 +288,8 @@ class MeridianAutomaticCameraTests(unittest.TestCase):
         values.update(camera_mode=parameters.AUTOMATIC_MODE, auto_orbit_distance=3.5,
                       auto_orbit_size=0.6, auto_orbit_end=270.0, auto_subject_fill=25.0,
                       auto_orbit_view_angle=90.0,
-                      auto_orbit_coverage=parameters.ORBIT_COVERAGES[0])
+                      auto_orbit_coverage=parameters.ORBIT_COVERAGES[0],
+                      auto_orbit_angle=25.0)
         with mock.patch.object(parameters, "estimate_camera_path", side_effect=fake):
             NODE().build(reference_image=torch.zeros(1, 8, 8, 3), **values)
         self.assertEqual(len(calls), 1)
@@ -298,6 +299,17 @@ class MeridianAutomaticCameraTests(unittest.TestCase):
         self.assertAlmostEqual(calls[0]["subject_fill"], 25.0)
         self.assertEqual(calls[0]["view_angle"], 90.0)
         self.assertEqual(calls[0]["coverage"], parameters.ORBIT_COVERAGES[0])
+        self.assertAlmostEqual(calls[0]["orbit_amplitude"], 25.0)
+
+    def test_o_orbit_angle_widget_is_visible_and_reaches_the_estimator(self):
+        required = NODE.INPUT_TYPES()["required"]
+        angle = required["auto_orbit_angle"][1]
+        self.assertAlmostEqual(angle["default"], parameters.FRONT_ORBIT_ANGLE_DEFAULT)
+        self.assertEqual((angle["min"], angle["max"]),
+                         (parameters.FRONT_ORBIT_ANGLE_MIN, parameters.FRONT_ORBIT_LIMIT))
+        self.assertIn("auto_orbit_angle", parameters.AUTO_WIDGET_NAMES)
+        source = JS_PATH.read_text(encoding="utf-8")
+        self.assertIn('"auto_orbit_angle"', source)
 
     def test_a_scene_survey_still_uses_orbit_size(self):
         """Auto Orbit Size only lost its meaning for the subject; the rows still follow it."""
