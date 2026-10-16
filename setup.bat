@@ -70,8 +70,9 @@ echo.
 echo   Step 1 clones the Enndees Nodepack - that is where the nodes live.
 echo   Step 7 clones the community packs the example workflow uses:
 echo     Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS,
-echo     easy-use, Pixaroma, BRIA RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup,
-echo     H3 MotionCache, H3 Turbo, H3 latent upscaler.
+echo     easy-use, Pixaroma, BRIA RMBG, RMBG + SAM3, RTX nodes, UniBlockSwap,
+echo     Memory-Cleanup, H3 MotionCache, H3 Turbo, H3 latent upscaler,
+echo     Veda Sparse Attention.
 set /p "COMM=Skip the community node packs (step 7)? [y/N]: "
 if /i "!COMM!"=="y" set "EXTRA=--skip-community-nodes"
 

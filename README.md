@@ -53,8 +53,9 @@ to automatically call Lichtfeld for the splatting process.
 | Path | Content |
 |---|---|
 | `setup.bat`, `setup/meridian_setup.py` | the one-shot setup: clones the **Enndees Nodepack** (that is where the nodes live) + every community pack the example needs, installs Depth Anything v3, unpacks your Meridian release LoRAs, copies the example workflow |
-| `examples/Meridian_Splatting_1.1.json` | **the reference workflow for the whole pipeline** (automatic camera with the O Orbit Angle, 158 frames, sharp-frame selection) |
-| `examples/Meridian_Splatting_1.0.json` | the previous reference workflow (kept for comparison) |
+| `examples/Meridian_Splatting_1.4.json` | **the reference workflow for the whole pipeline** (175 frames, automatic banded-orbit camera with the O Orbit Angle, SAM3 face orbit, sharp-frame selection) |
+| `examples/Meridian_Splatting_1.1.json` | the previous reference workflow (kept for comparison) |
+| `examples/Meridian_Splatting_1.0.json` | the original reference workflow (kept for comparison) |
 | `__init__.py` | deliberately registers nothing — it only points at the pack, so an existing `custom_nodes` clone of this repo stays harmless |
 | `LICENSE` | MIT (the node code in the pack is MIT as well) |
 
@@ -107,14 +108,15 @@ setup.bat "D:\ComfyUI_windows_portable" --meridian-zip "X:\path\to\Meridian_rele
 ### 4. MiniMax H3 model files
 
 `models\diffusion_models\H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors`,
-`models\text_encoders\qwen3vl_32b_minimax_h3_int8_convrot.safetensors`,
-`models\vae\minimax_h3_video_vae_fp16.safetensors`,
-`models\vae\minimax_h3_audio_vae_fp32.safetensors` (your own H3 download).
-Step 5/7 of the setup lists whatever is missing.
+`models\text_encoders\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`,
+`models\vae\minimax_h3_video_vae_int8_convrot.safetensors`,
+`models\vae\minimax_h3_audio_vae_fp32.safetensors`,
+`models\loras\H3\minimax_h3_turbo_v4_step600_ema.safetensors` (the H3 Turbo pack's LoRA)
+(all your own H3 / H3 Turbo downloads). Step 5/7 of the setup lists whatever is missing.
 
 ### 5. Community node packs (installed by the setup)
 
-`examples/Meridian_Splatting_1.1.json` needs the **Enndees Nodepack** (step 1) plus these public
+`examples/Meridian_Splatting_1.4.json` needs the **Enndees Nodepack** (step 1) plus these public
 packs, which step 7 clones automatically:
 
 | Pack | Repo | Node(s) the example uses |
@@ -127,13 +129,15 @@ packs, which step 7 clones automatically:
 | VideoHelperSuite | <https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite> | `VHS_VideoCombine` |
 | ComfyUI-Easy-Use | <https://github.com/yamatazen/ComfyUI-Easy-Use> | `easy cleanGpuUsed` |
 | ComfyUI-Pixaroma | <https://github.com/pixaroma/ComfyUI-Pixaroma> | `PixaromaGroupSwitch` |
-| ComfyUI-BRIA_AI-RMBG | <https://github.com/ZHO-ZHO-ZHO/ComfyUI-BRIA_AI-RMBG> | `RMBG` |
+| ComfyUI-RMBG | <https://github.com/1038lab/ComfyUI-RMBG> | `RMBG`, `SAM3Segment` — also the face gate's SAM3 |
+| ComfyUI-BRIA_AI-RMBG | <https://github.com/ZHO-ZHO-ZHO/ComfyUI-BRIA_AI-RMBG> | `RMBG` (older examples) |
 | Nvidia RTX Nodes | <https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI> | `RTXVideoSuperResolution` |
 | ComfyUI_UniBlockSwap | <https://github.com/smthemex/ComfyUI_UniBlockSwap> | `UniBlockSwapTE` |
 | Comfyui-Memory_Cleanup | <https://github.com/LAOGOU-666/Comfyui-Memory_Cleanup> | `VRAMCleanup` |
 | MiniMax H3 MotionCache | <https://github.com/starsFriday/ComfyUI-MiniMax-H3-MotionCache> | `MiniMaxH3MotionCache` |
 | MiniMax H3 Turbo | <https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo> | `MiniMaxH3TurboLoRA`, `MiniMaxH3TurboSampler` |
 | Minimax H3 latent upscaler | <https://github.com/xmarre/Comfyui_Minimax_h3_latent_Upscaler-Plus> | `MinimaxH3LatentUpscaler3D` |
+| Veda Sparse Attention | <https://github.com/veda-sparse/Veda-on-ComfyUI> | `VedaSparseAttention` |
 
 `setup.bat` skips them only if you answer the prompt with `y` (or pass `--skip-community-nodes`).
 
@@ -164,7 +168,7 @@ Nodepack) into `ComfyUI\custom_nodes\` — this repository itself ships no node 
 | 4/7 | unpacks `--meridian-zip` and copies the Meridian LoRAs into `models\loras` |
 | 5/7 | reports the H3 model files the example workflow needs |
 | 6/7 | copies the example workflows to `ComfyUI\user\default\workflows` and rewrites machine-specific `...\Tools\...` paths |
-| 7/7 | clones the community packs the example workflow uses (Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, BRIA RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache, H3 Turbo, H3 latent upscaler) |
+| 7/7 | clones the community packs the example workflow uses (Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, BRIA RMBG, **RMBG + SAM3**, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache, H3 Turbo, H3 latent upscaler, **Veda Sparse Attention**) |
 
 Useful flags (forwarded by `setup.bat` after the folder argument):
 
@@ -178,13 +182,14 @@ setup.bat "D:\ComfyUI" --no-workflow                    # do not copy the exampl
 
 ### 3. Restart and go
 
-Restart ComfyUI, open **`Meridian_Splatting_1.1`** (Workflow menu) and queue it. The first run
+Restart ComfyUI, open **`Meridian_Splatting_1.4`** (Workflow menu) and queue it. The first run
 downloads the DA3 weights into the Hugging Face cache; everything else is user-provided (models
 above). The node defaults in that example are also the *node defaults*:
-**158 frames**, `camera_mode = Automatic`, `auto_max_speed 12`, `auto_subject_fill 40`,
+**175 frames**, `camera_mode = Automatic`, `auto_max_speed 12`, `auto_subject_fill 30`,
+`auto_orbit_coverage = Banded Orbits` (2 bands, 120 deg wide, -10 → 45 deg, start yaw 60),
 `auto_orbit_angle 45` (the front O's angular radius — lower it for a flatter, less steep orbit),
-`model_size = Depth-Anything-3-Mono-Large`, geometry `canvas_mode = custom 832x480`,
-`depth_res = 1920`, `edge_threshold 0.1`, `back_face_cull` on.
+`face_orbit = Auto (SAM3)` with `face_fill 10`, geometry `canvas_mode = auto_meridian480`,
+`depth_res = 1920`, `edge_threshold 0.05`, `back_face_cull` on.
 
 ---
 
@@ -198,18 +203,19 @@ sweep) around the absolute look pivot; `Automatic` estimates the pivot from the 
 image and emits the estimated path (the `args` output and the `custom_camera` signal stay in sync
 with the Geometry node).
 
-The interesting automatic-mode widgets (defaults = the `Meridian_Splatting_1.0` values):
+The interesting automatic-mode widgets (defaults = the `Meridian_Splatting_1.4` values):
 
 | Widget | Default | Meaning |
 |---|---|---|
-| `output_frames` | `158` | path length; Meridian ships prompt assets for 73/90/107/124/141/158/175/243 |
+| `output_frames` | `175` | path length; Meridian ships prompt assets for 73/90/107/124/141/158/175/243 |
 | `camera_mode` | `Automatic` | `Manual` / `Automatic` |
 | `auto_target` | `subject` | orbit the subject (mask or near depth layer) or the whole scene |
 | `auto_max_speed` | `12` | % of the content radius the camera may travel per frame — the hard cap |
-| `auto_subject_fill` | `40` | fill of the subject in the picture (bigger = closer) |
+| `auto_subject_fill` | `30` | fill of the subject in the picture (bigger = closer) |
 | `auto_orbit_view_angle` | `0` | azimuth the front circle is centred on: 0 frontal, +90 viewer-left, 180 back, 270 viewer-right |
-| `auto_orbit_coverage` | `Front and Back` | `Front only` = the circle alone; `Front and Back` = circle + level connection + the far orbit's loop (9 → 12 → 3 → 6 → 8 o'clock) |
+| `auto_orbit_coverage` | `Banded Orbits` | `O-Orbit Front` / `O-Orbit Front&Back` fly the O orbit(s); `Banded Orbits` stacks partial orbit bands (`band_start_angle -10`, `band_stop_angle 45`, `band_count 2`, `band_width 120`, `band_start_yaw 60`) |
 | `auto_orbit_direction` | `counter-clockwise` | mirrors the whole path |
+| `face_orbit` | `Auto (SAM3)` | appends a face-height orbit after the body coverage; `face_fill 10`, `face_yaw_span 60`, `face_prompt face`, `face_threshold 0.75`, `face_orbit_mode Horizontal` |
 | `auto_orbit_angle` | `45` | front O-orbit angular radius in deg (the swing AND the rise - the O is one circle); smaller = flatter / less steep. The speed fit may still grow it a little (gimbal-safe); clamped to `5`-`60` |
 | `model_size` | `Depth-Anything-3-Mono-Large` | depth model of the estimate — must match the Geometry node, or the keys are in the wrong units |
 | `auto_pivot_x/y/z` | `0` | final aim offset in content radii (applied last, cannot be cancelled by the solves) |
@@ -230,11 +236,12 @@ the point cloud and renders the camera path from it — all inside ComfyUI's pyt
 | `video` | `clip.mp4` | source video path; ignored when an IMAGE is connected (frame 0 repeats) |
 | `args` | *(empty)* | extra Meridian flags; `custom_camera` wins over frame-count/motion flags |
 | `model_size` | `Depth-Anything-3-Mono-Large` | render depth model (V2 trio is the fallback) |
-| `canvas_mode` | `custom` (`832x480`) | `auto_meridian480` = the trained canvas ladder, `custom` = the two fields below |
+| `canvas_mode` | `auto_meridian480` | the trained canvas ladder; `custom` uses the two fields below (default `1920x1088`) |
 | `depth_res` | `1920` | working-resolution cap on the still's longest side; also DA3's `process_res` (`0` = keep the still's own resolution) |
-| `edge_cull` / `edge_threshold` | `on` / `0.1` | drop points on steep depth edges so silhouettes cannot smear into spikes |
+| `edge_cull` / `edge_threshold` | `on` / `0.05` | drop points on steep depth edges so silhouettes cannot smear into spikes |
 | `back_face_cull` | `on` | Meridian's `--cull`: splats the target camera sees from behind are dropped (no mirrored front) |
-| `cloud_scale` / `point_size` | `2` / `1` | unprojection-grid upscale / point footprint |
+| `cloud_scale` / `point_size` | `1` / `1` | unprojection-grid upscale / point footprint |
+| `moge_refine_steps` | `10` | MoGe 3 self-guided refinement steps (ignored by other depth sources) |
 | `image` (optional) | — | the still or frame batch to reproject |
 | `custom_camera` (optional) | — | `custom_camera` from the Parameters node; its frame count sets the flight length |
 

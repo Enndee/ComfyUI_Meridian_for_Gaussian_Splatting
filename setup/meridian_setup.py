@@ -21,8 +21,9 @@ What it does:
    rewrites every machine-specific path to this machine,
 7. clones the community node packs the example workflow uses (Sharp-Selector,
    rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, BRIA
-   RMBG, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache, H3 Turbo,
-   H3 latent upscaler). ``--skip-community-nodes`` turns this off.
+   RMBG, RMBG + SAM3, RTX nodes, UniBlockSwap, Memory-Cleanup, H3 MotionCache,
+   H3 Turbo, H3 latent upscaler, Veda Sparse Attention). ``--skip-community-nodes``
+   turns this off.
 
 Use ``--check`` for a read-only report (no installs, no downloads). Pass
 ``--meridian-zip <file>`` to unpack a Meridian release zip; its LoRAs are
@@ -47,9 +48,11 @@ PACK_URL = "https://github.com/Enndee/Enndees_Nodepack"
 PACK_NAME = "Enndees_Nodepack"
 PACK_MARKER = ("nodes", "enndee_meridian_parameters.py")
 DA3_PACKAGE = "depth-anything-3"
-# Every community pack examples/Meridian_Splatting_1.1.json needs (all Enndee_* /
+# Every community pack examples/Meridian_Splatting_1.4.json needs (all Enndee_* /
 # Meridian* nodes come from the pack above). Public and safe to clone; installed
-# by default, `--skip-community-nodes` turns it off.
+# by default, `--skip-community-nodes` turns it off. comfyui-rmbg supplies the
+# workflow's RMBG + SAM3Segment nodes (SAM3 is also the face gate's detector);
+# veda-sparse-attention supplies VedaSparseAttention.
 COMMUNITY_PACKS = (
     ("ComfyUI-Sharp-Selector", "https://github.com/ethanfel/ComfyUI-Sharp-Selector"),
     ("rgthree-comfy", "https://github.com/rgthree/rgthree-comfy"),
@@ -67,6 +70,8 @@ COMMUNITY_PACKS = (
     ("comfyui-minimax-h3-turbo", "https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo"),
     ("comfyui-minimax-h3-latent-upscaler",
      "https://github.com/xmarre/Comfyui_Minimax_h3_latent_Upscaler-Plus"),
+    ("comfyui-rmbg", "https://github.com/1038lab/ComfyUI-RMBG"),
+    ("veda-sparse-attention", "https://github.com/veda-sparse/Veda-on-ComfyUI"),
 )
 
 GREEN = "\033[92m"
@@ -405,11 +410,19 @@ def _model_roots(paths):
 
 REQUIRED_MODELS = (
     ("diffusion_models", "H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "your MiniMax H3 download"),
-    ("text_encoders", "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", "your MiniMax H3 download"),
-    ("vae", "minimax_h3_video_vae_fp16.safetensors", "your MiniMax H3 download"),
+    ("text_encoders", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "your MiniMax H3 download"),
+    ("vae", "minimax_h3_video_vae_int8_convrot.safetensors", "your MiniMax H3 download"),
     ("vae", "minimax_h3_audio_vae_fp32.safetensors", "your MiniMax H3 download"),
     ("loras", "meridian_teacher_lora.safetensors", "ships in the Meridian release"),
     ("loras", "meridian_turbo_lora.safetensors", "ships in the Meridian release"),
+    ("loras", "H3/minimax_h3_turbo_v4_step600_ema.safetensors", "your MiniMax H3 Turbo download"),
+)
+
+# Pack-shipped extras the workflow selects through their own node packs; the
+# folders depend on the pack, so they are only reported, never checked.
+PACK_MODELS = (
+    "minimax_h3_latent_upscaler_3d_bf16.safetensors  (H3 latent upscaler pack)",
+    "minimax_h3_t2va_veda_8nfe_600step_preview_fp8.safetensors  (Veda pack)",
 )
 
 
@@ -431,6 +444,9 @@ def ensure_models(paths, args, dry=False):
             print(f"         {folder}\\{name}  <- {source}")
     else:
         ok("all workflow models found")
+    note("the node packs fetch their own weights on first use:")
+    for extra in PACK_MODELS:
+        print(f"         {extra}")
 
 
 def extract_meridian_zip(paths, args, dry=False):
@@ -522,7 +538,9 @@ def main():
     ok("Depth Anything v3 reprojection: no VGGT, no separate environment")
     if not args.skip_community_nodes:
         ok(f"{len(COMMUNITY_PACKS)} community packs ensured "
-           "(Sharp-Selector, rgthree, KJNodes, various, custom-scripts, VHS, easy-use, ...)")
+           "(rgthree, KJNodes, various, custom-scripts, VHS, easy-use, Pixaroma, "
+           "RMBG + SAM3, RTX nodes, Memory-Cleanup, H3 MotionCache, H3 Turbo, "
+           "H3 latent upscaler, Veda Sparse Attention, ...)")
     say("Restart ComfyUI, open the copied workflow and queue it. The DA3 model weights "
         "download into the Hugging Face cache on first use; everything else is "
         "user-provided (see the README).", GREEN)
