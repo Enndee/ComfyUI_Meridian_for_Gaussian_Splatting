@@ -54,8 +54,7 @@ to automatically call Lichtfeld for the splatting process.
 |---|---|
 | `setup.bat`, `setup/meridian_setup.py` | the one-shot setup: clones the **Enndees Nodepack** (that is where the nodes live) + every community pack the example needs, installs Depth Anything v3, unpacks your Meridian release LoRAs, copies the example workflow |
 | `examples/Meridian_Splatting_1.4.json` | **the reference workflow for the whole pipeline** (175 frames, automatic banded-orbit camera with the O Orbit Angle, SAM3 face orbit, sharp-frame selection) |
-| `examples/Meridian_Splatting_1.1.json` | the previous reference workflow (kept for comparison) |
-| `examples/Meridian_Splatting_1.0.json` | the original reference workflow (kept for comparison) |
+| `examples/Meridian_Splatting_1.3.json` | the previous reference workflow (kept for comparison) |
 | `__init__.py` | deliberately registers nothing — it only points at the pack, so an existing `custom_nodes` clone of this repo stays harmless |
 | `LICENSE` | MIT (the node code in the pack is MIT as well) |
 
